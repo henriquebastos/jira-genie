@@ -154,15 +154,17 @@ def cli(argv=None):
             if not client_id:
                 print(json.dumps({"error": "client_id is required"}), file=sys.stderr)
                 sys.exit(1)
+            client_secret = input("Enter your client_secret (or press Enter to skip): ").strip() or None
             from jira.auth import login
-            result = login(client_id)
+            result = login(client_id, client_secret=client_secret)
             print(json.dumps(result))
         elif args.subcommand == "status":
             try:
                 from jira.config import ConfigError, discover_instance_dir
                 instance_dir = discover_instance_dir(instance=getattr(args, "instance", None))
                 config = json.loads((instance_dir / "config.json").read_text())
-                print(json.dumps({"status": "logged in", **config}))
+                safe = {k: v for k, v in config.items() if k != "client_secret"}
+                print(json.dumps({"status": "logged in", **safe}))
             except (ConfigError, FileNotFoundError):
                 print(json.dumps({"status": "not logged in"}))
         elif args.subcommand == "logout":
@@ -175,5 +177,99 @@ def cli(argv=None):
                 print(json.dumps({"message": "Logged out"}))
             except (ConfigError, FileNotFoundError):
                 print(json.dumps({"message": "Not logged in"}))
+    elif args.command == "issue":
+        from jira.client import JiraClient
+        from jira.formatters import format_issue
+
+        client = JiraClient.from_config(instance=args.instance)
+        if args.subcommand == "get":
+            fields = args.fields.split(",") if getattr(args, "fields", None) else None
+            result = client.issue.get(args.key, fields=fields)
+            if getattr(args, "raw", False):
+                print(json.dumps(result, indent=2))
+            else:
+                print(json.dumps(format_issue(result), indent=2))
+        elif args.subcommand == "edit":
+            if getattr(args, "raw_payload", None):
+                payload = json.loads(args.raw_payload)
+            else:
+                fields = {}
+                for s in (args.set or []):
+                    k, v = s.split("=", 1)
+                    fields[k] = v
+                if getattr(args, "json", None):
+                    fields = {**json.loads(args.json), **fields}
+                from jira.schema import resolve_fields
+                schema = _load_schema(args.instance)
+                payload = {"fields": resolve_fields(fields, schema)}
+            client.issue.edit(args.key, payload)
+            print(json.dumps({"message": f"Updated {args.key}"}))
+        elif args.subcommand == "create":
+            if getattr(args, "raw_payload", None):
+                payload = json.loads(args.raw_payload)
+            else:
+                from jira.templates import build_issue_fields, get_default, load_template
+                schema = _load_schema(args.instance)
+                template = None
+                template_name = getattr(args, "template", None)
+                if not template_name:
+                    instance_dir = _get_instance_dir(args.instance)
+                    config_file = instance_dir / "config.json"
+                    template_name = get_default(config_file)
+                if template_name:
+                    instance_dir = _get_instance_dir(args.instance)
+                    template = load_template(template_name, instance_dir / "templates")
+                json_override = json.loads(args.json) if getattr(args, "json", None) else None
+                cli_flags = {}
+                for s in (getattr(args, "set", None) or []):
+                    k, v = s.split("=", 1)
+                    cli_flags[k] = v
+                if getattr(args, "summary", None):
+                    cli_flags["summary"] = args.summary
+                resolved = build_issue_fields(template, json_override, cli_flags, schema)
+                payload = {"fields": resolved}
+            result = client.issue.create(payload)
+            print(json.dumps(result, indent=2))
+        elif args.subcommand == "transition":
+            client.issue.transition(args.key, args.status)
+            print(json.dumps({"message": f"Transitioned {args.key} to {args.status}"}))
+        elif args.subcommand == "assign":
+            client.issue.assign(args.key, args.assignee)
+            print(json.dumps({"message": f"Assigned {args.key}"}))
+        elif args.subcommand == "comment":
+            result = client.issue.add_comment(args.key, args.body)
+            print(json.dumps(result, indent=2))
+        elif args.subcommand == "link":
+            client.issue.link(args.inward_key, args.outward_key, args.link_type)
+            print(json.dumps({"message": f"Linked {args.inward_key} → {args.outward_key}"}))
+    elif args.command == "search":
+        from jira.client import JiraClient
+        from jira.formatters import format_issue_list
+
+        client = JiraClient.from_config(instance=args.instance)
+        fields = args.fields.split(",") if getattr(args, "fields", None) else None
+        results = client.search.jql(args.jql, fields=fields)
+        print(json.dumps(format_issue_list(results), indent=2))
+    elif args.command == "user":
+        from jira.client import JiraClient
+
+        client = JiraClient.from_config(instance=args.instance)
+        if args.subcommand == "me":
+            print(json.dumps(client.user.myself(), indent=2))
+        elif args.subcommand == "search":
+            print(json.dumps(client.user.search(args.query), indent=2))
     elif args.command is None:
         parse(["--help"])
+
+
+def _get_instance_dir(instance=None):
+    from jira.config import discover_instance_dir
+    return discover_instance_dir(instance=instance)
+
+
+def _load_schema(instance=None):
+    instance_dir = _get_instance_dir(instance)
+    schema_path = instance_dir / "schema.json"
+    if not schema_path.exists():
+        return {}
+    return json.loads(schema_path.read_text()).get("fields", {})

@@ -41,8 +41,9 @@ class JiraAuth(RecoverableAuth):
     TOKEN_URL = "https://auth.atlassian.com/oauth/token"
     SESSION_CLASS = ProSession
 
-    def __init__(self, token, client_id, refresh):
+    def __init__(self, token, client_id, refresh, client_secret=None):
         self.client_id = client_id
+        self.client_secret = client_secret
         self.refresh = refresh
         super().__init__(token)
 
@@ -59,6 +60,7 @@ class JiraAuth(RecoverableAuth):
                 "grant_type": "refresh_token",
                 "client_id": self.client_id,
                 "refresh_token": refresh_token,
+                **({"client_secret": self.client_secret} if self.client_secret else {}),
             },
         )
         r.raise_for_status()
@@ -74,20 +76,24 @@ class JiraAuth(RecoverableAuth):
 ACCESSIBLE_RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
 
 
-def exchange_code(code, client_id, code_verifier, redirect_uri, token_url=JiraAuth.TOKEN_URL):
+def exchange_code(code, client_id, code_verifier, redirect_uri, client_secret=None, token_url=JiraAuth.TOKEN_URL):
     """Exchange authorization code for tokens."""
+    data = {
+        "grant_type": "authorization_code",
+        "client_id": client_id,
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "code_verifier": code_verifier,
+    }
+    if client_secret:
+        data["client_secret"] = client_secret
     r = requests.post(
         token_url,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
-        data={
-            "grant_type": "authorization_code",
-            "client_id": client_id,
-            "code": code,
-            "redirect_uri": redirect_uri,
-            "code_verifier": code_verifier,
-        },
+        data=data,
     )
-    r.raise_for_status()
+    if not r.ok:
+        raise JiraAuthError(f"Token exchange failed ({r.status_code}): {r.text}")
     return r.json()
 
 
@@ -98,7 +104,7 @@ def discover_cloud_resources(access_token, url=ACCESSIBLE_RESOURCES_URL):
     return r.json()
 
 
-def save_login_config(base_dir, cloud_id, site, client_id, refresh_token, refresh_expires_in):
+def save_login_config(base_dir, cloud_id, site, client_id, refresh_token, refresh_expires_in, client_secret=None):
     """Persist login config and refresh token to instance directory."""
     base = Path(base_dir)
     instance_dir = base / cloud_id
@@ -106,6 +112,8 @@ def save_login_config(base_dir, cloud_id, site, client_id, refresh_token, refres
 
     # Save instance config
     config = {"cloud_id": cloud_id, "site": site, "client_id": client_id}
+    if client_secret:
+        config["client_secret"] = client_secret
     (instance_dir / "config.json").write_text(json.dumps(config, indent=2))
 
     # Save refresh token via FileCache (same interface as TokenStore backend)
@@ -174,7 +182,7 @@ def wait_for_callback(port=CALLBACK_PORT):
     return result["code"]
 
 
-def login(client_id, base_dir="~/.config/jira-cli"):
+def login(client_id, client_secret=None, base_dir="~/.config/jira-cli"):
     """Run the full OAuth 2.0 login flow. Opens browser, waits for callback, saves tokens."""
     base_dir = Path(base_dir).expanduser()
 
@@ -192,7 +200,7 @@ def login(client_id, base_dir="~/.config/jira-cli"):
 
     # Exchange code for tokens
     print("Exchanging code for tokens...")
-    tokens = exchange_code(code, client_id, code_verifier, REDIRECT_URI)
+    tokens = exchange_code(code, client_id, code_verifier, REDIRECT_URI, client_secret=client_secret)
 
     # Discover cloud resources
     print("Discovering Jira Cloud instances...")
@@ -212,6 +220,7 @@ def login(client_id, base_dir="~/.config/jira-cli"):
         cloud_id=cloud_id,
         site=site,
         client_id=client_id,
+        client_secret=client_secret,
         refresh_token=tokens["refresh_token"],
         refresh_expires_in=tokens.get("refresh_expires_in", 0),
     )

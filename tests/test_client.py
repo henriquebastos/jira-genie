@@ -54,8 +54,8 @@ class TestIssueSubClient:
 
 
 class TestSearchSubClient:
-    def test_jql_posts_search(self, search, responses):
-        responses.add("POST", f"{BASE_URL}rest/api/3/search", json={
+    def test_jql_searches(self, search, responses):
+        responses.add("GET", f"{BASE_URL}rest/api/3/search/jql", json={
             "issues": [{"key": "DEV-1"}, {"key": "DEV-2"}],
             "total": 2,
         })
@@ -64,13 +64,13 @@ class TestSearchSubClient:
         assert result[0]["key"] == "DEV-1"
 
     def test_jql_all_paginates(self, search, responses):
-        responses.add("POST", f"{BASE_URL}rest/api/3/search", json={
+        responses.add("GET", f"{BASE_URL}rest/api/3/search/jql", json={
             "issues": [{"key": "DEV-1"}],
             "startAt": 0,
             "maxResults": 1,
             "total": 2,
         })
-        responses.add("POST", f"{BASE_URL}rest/api/3/search", json={
+        responses.add("GET", f"{BASE_URL}rest/api/3/search/jql", json={
             "issues": [{"key": "DEV-2"}],
             "startAt": 1,
             "maxResults": 1,

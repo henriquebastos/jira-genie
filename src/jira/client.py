@@ -4,7 +4,11 @@ from requestspro.sessions import ProSession
 
 
 class JiraSession(ProSession):
-    pass
+    def before_prepare_body(self, request):
+        """Skip JSON encoding when there's no body — CloudFront blocks GET with Content-Type: application/json."""
+        if not request.data and request.json is None:
+            return
+        super().before_prepare_body(request)
 
 
 class IssueSubClient(Client):
@@ -57,20 +61,20 @@ class IssueSubClient(Client):
 
 class SearchSubClient(Client):
     def jql(self, query, fields=None, max_results=50):
-        payload = {"jql": query, "maxResults": max_results}
+        params = {"jql": query, "maxResults": max_results}
         if fields:
-            payload["fields"] = fields
-        result = self.post(url="rest/api/3/search", json=payload)
+            params["fields"] = ",".join(fields) if isinstance(fields, list) else fields
+        result = super().get(url="rest/api/3/search/jql", params=params)
         return result.get("issues", [])
 
     def jql_all(self, query, fields=None):
         all_issues = []
         start_at = 0
         while True:
-            payload = {"jql": query, "startAt": start_at, "maxResults": 50}
+            params = {"jql": query, "startAt": start_at, "maxResults": 50}
             if fields:
-                payload["fields"] = fields
-            result = self.post(url="rest/api/3/search", json=payload)
+                params["fields"] = ",".join(fields) if isinstance(fields, list) else fields
+            result = super().get(url="rest/api/3/search/jql", params=params)
             issues = result.get("issues", [])
             all_issues.extend(issues)
             if start_at + len(issues) >= result.get("total", 0):
@@ -138,3 +142,29 @@ class JiraClient(MainClient):
         self.sprint = SprintSubClient(session)
         self.board = BoardSubClient(session)
         self.user = UserSubClient(session)
+
+    @classmethod
+    def from_config(cls, instance=None):
+        """Create client from stored OAuth config."""
+        # Internal imports to avoid circular deps
+        import json
+
+        from requestspro.token import ExpireValue, TokenStore
+
+        from jira.auth import JiraAuth
+        from jira.cache import FileCache
+        from jira.config import discover_instance_dir
+
+        instance_dir = discover_instance_dir(instance=instance)
+        config = json.loads((instance_dir / "config.json").read_text())
+
+        cloud_id = config["cloud_id"]
+        client_id = config["client_id"]
+        client_secret = config.get("client_secret")
+
+        base_url = f"https://api.atlassian.com/ex/jira/{cloud_id}/"
+        token = TokenStore(ExpireValue(), key="access_token", offset=10)
+        refresh = TokenStore(FileCache(instance_dir / "refresh.json"), key="refresh_token")
+        auth = JiraAuth(token, client_id, refresh, client_secret=client_secret)
+        session = JiraSession(auth=auth, base_url=base_url)
+        return cls(session)
