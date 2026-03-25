@@ -1,0 +1,78 @@
+# Python imports
+from datetime import UTC, datetime
+import json
+from pathlib import Path
+import re
+
+
+def friendly_name(name):
+    """'Story Points' → 'story_points'"""
+    return re.sub(r"\s+", "_", name.strip()).lower()
+
+
+def build_field_registry(raw_fields):
+    """GET /rest/api/3/field response → {friendly_name: {id, type, name?, system?}}"""
+    registry = {}
+    for field in raw_fields:
+        is_system = not field.get("custom", False)
+        fname = field["id"] if is_system else friendly_name(field["name"])
+        entry = {
+            "id": field["id"],
+            "type": field.get("schema", {}).get("type", "any"),
+        }
+        if is_system:
+            entry["system"] = True
+        else:
+            entry["name"] = field["name"]
+        registry[fname] = entry
+    return registry
+
+
+def build_type_schema(raw_createmeta):
+    """Per-type createmeta → {id, required, fields: {name: {type, required, allowed?}}}"""
+    fields = {}
+    required = []
+    for field_id, field_data in raw_createmeta.get("fields", {}).items():
+        entry = {
+            "type": field_data.get("schema", {}).get("type", "any"),
+            "required": field_data.get("required", False),
+        }
+        if field_data.get("allowedValues"):
+            entry["allowed"] = [v["name"] for v in field_data["allowedValues"] if "name" in v]
+        fields[field_id] = entry
+        if field_data.get("required"):
+            required.append(field_id)
+    return {"id": raw_createmeta["id"], "required": required, "fields": fields}
+
+
+def sync(session, instance_dir, project=None):
+    """Fetch from API and write schema.json. I/O boundary."""
+    instance_dir = Path(instance_dir)
+
+    # Fetch all fields
+    raw_fields = session.get("rest/api/3/field").json()
+    registry = build_field_registry(raw_fields)
+
+    # Fetch per-project per-type schemas
+    projects = {}
+    if project:
+        project_keys = [project]
+    else:
+        # TODO: discover projects from accessible resources
+        project_keys = []
+
+    for proj_key in project_keys:
+        resp = session.get(f"rest/api/3/issue/createmeta/{proj_key}/issuetypes")
+        issue_types = resp.json().get("issueTypes", [])
+        types = {}
+        for itype in issue_types:
+            type_resp = session.get(f"rest/api/3/issue/createmeta/{proj_key}/issuetypes/{itype['id']}")
+            types[itype["name"]] = build_type_schema(type_resp.json())
+        projects[proj_key] = {"types": types}
+
+    schema = {
+        "synced_at": datetime.now(UTC).isoformat(),
+        "fields": registry,
+        "projects": projects,
+    }
+    (instance_dir / "schema.json").write_text(json.dumps(schema, indent=2))
