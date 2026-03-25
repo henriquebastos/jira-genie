@@ -2,6 +2,9 @@
 import json
 from pathlib import Path
 
+# Internal imports
+from jira.schema import resolve_fields
+
 
 class TemplateError(Exception):
     pass
@@ -63,3 +66,10 @@ def clear_default(config_file):
     config = json.loads(path.read_text())
     config.pop("default_template", None)
     path.write_text(json.dumps(config, indent=2))
+
+
+def build_issue_fields(template, json_override, cli_flags, schema):
+    """Pure merge: template | json | flags. Then resolve friendly names + expand values."""
+    base = template or {}
+    merged = {**base, **(json_override or {}), **cli_flags}
+    return resolve_fields(merged, schema)

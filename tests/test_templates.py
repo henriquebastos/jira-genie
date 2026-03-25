@@ -4,6 +4,7 @@ import pytest
 # Internal imports
 from jira.templates import (
     TemplateError,
+    build_issue_fields,
     clear_default,
     delete_template,
     get_default,
@@ -62,3 +63,68 @@ class TestDefaultTemplate:
         set_default("bug", config_file)
         clear_default(config_file)
         assert get_default(config_file) is None
+
+
+SCHEMA = {
+    "summary": {"id": "summary", "type": "string", "system": True},
+    "priority": {"id": "priority", "type": "priority", "system": True},
+    "story_points": {"id": "customfield_10036", "type": "number", "name": "Story Points"},
+    "team": {"id": "customfield_10001", "type": "option", "name": "Team"},
+    "labels": {"id": "labels", "type": "array", "system": True},
+}
+
+
+class TestBuildIssueFields:
+    def test_template_only(self):
+        result = build_issue_fields({"summary": "Fix"}, None, {}, SCHEMA)
+        assert result == {"summary": "Fix"}
+
+    def test_json_overrides_template(self):
+        result = build_issue_fields(
+            {"summary": "Old", "priority": "P3: Low"},
+            {"summary": "New"},
+            {},
+            SCHEMA,
+        )
+        assert result["summary"] == "New"
+        assert result["priority"] == {"name": "P3: Low"}
+
+    def test_cli_flags_win(self):
+        result = build_issue_fields(
+            {"summary": "Template"},
+            {"summary": "JSON"},
+            {"summary": "CLI"},
+            SCHEMA,
+        )
+        assert result == {"summary": "CLI"}
+
+    def test_shallow_override_replaces_arrays(self):
+        result = build_issue_fields(
+            {"labels": ["old"]},
+            {"labels": ["new"]},
+            {},
+            SCHEMA,
+        )
+        assert result == {"labels": ["new"]}
+
+    def test_no_template(self):
+        result = build_issue_fields(None, {"summary": "Only JSON"}, {}, SCHEMA)
+        assert result == {"summary": "Only JSON"}
+
+    def test_all_empty(self):
+        result = build_issue_fields(None, None, {}, SCHEMA)
+        assert result == {}
+
+    def test_full_pipeline(self):
+        result = build_issue_fields(
+            {"summary": "Template", "team": "Backend", "labels": ["old"]},
+            {"story_points": 5},
+            {"labels": ["new"]},
+            SCHEMA,
+        )
+        assert result == {
+            "summary": "Template",
+            "customfield_10001": {"value": "Backend"},
+            "customfield_10036": 5,
+            "labels": ["new"],
+        }
