@@ -1,0 +1,46 @@
+[project]
+name = "jira-cli"
+version = "0.1.0"
+description = "Jira Cloud CLI + library for agents and humans"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Your Name", email = "you@example.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+# TODO: Add requestspro when available (private package, not on PyPI)
+# dependencies = ["requestspro"]
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "jira"
+
+[project.scripts]
+jira = "jira.cli:cli"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.15.6",
+    "time-machine>=3.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=jira --cov-report=term-missing --no-header -q"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "RUF"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["jira"]
