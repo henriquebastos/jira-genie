@@ -7,6 +7,9 @@ intentional and reflect the project's values.
 
 - **Low cognitive load.** Code reads top-to-bottom without jumping around.
 - **Pure by default.** Push I/O to the boundary. Models and helpers are pure functions.
+  Defaults and configuration values (API keys, base URLs, feature flags) belong in the
+  CLI layer — not in library modules. Library functions accept these as parameters; the
+  CLI decides the values.
 - **No over-engineering.** Don't build abstractions until you have two concrete uses.
 - **Defer what you don't need.** If a feature isn't needed yet, don't add it.
 
@@ -146,6 +149,35 @@ is a CLI concern — use standalone functions like `format_item()`.
 Prefer real backends (e.g. SQLite `:memory:`) over mocks. Test real behavior, not mock
 wiring. Use mocks only for external services or I/O boundaries that can't be faked cheaply.
 
+### Use `responses` for HTTP testing
+
+This project uses the `responses` library to mock HTTP calls at the transport level,
+the same pattern as requests-pro. Don't mock session classes or build fake adapters —
+mock the HTTP endpoints directly:
+
+```python
+def test_renew_returns_tokens(self, tmp_path, responses):
+    responses.add("POST", JiraAuth.TOKEN_URL, json={"access_token": "new", "expires_in": 3600})
+    auth = make_auth(tmp_path, refresh_token="old")
+    access_token, expires_in = auth.renew()
+    assert access_token == "new"
+```
+
+The shared `responses` fixture lives in `tests/conftest.py`:
+
+```python
+@pytest.fixture()
+def responses():
+    with responses_lib.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        yield mock
+```
+
+### Check upstream test patterns
+
+When using a private or less-known dependency, read its test suite before writing your
+own tests. Clone the repo if needed. Match the upstream's testing patterns — they know
+their library best.
+
 ### Assert against the model, not individual fields
 
 Leverage Pydantic equality to compare whole objects. Don't decompose into field-by-field
@@ -205,6 +237,17 @@ jumping to shared helpers.
 
 ## Workflow
 
+### Bean-first rule
+
+Every change — feature, fix, or refactor — MUST have a bean before code begins.
+If you discover work mid-task, create a bean for it before starting. No exceptions,
+even for "quick fixes."
+
+### Update docs with feature changes
+
+When a feature changes user-facing behavior (new flags, changed defaults, new commands),
+update README.md in the same commit. Don't leave docs out of sync.
+
 ### Red-green-refactor TDD
 
 1. Write a failing test (RED)
@@ -237,9 +280,10 @@ uv run pytest
 uv run ruff check src/ tests/
 ```
 
-### Review before committing
+### Review before committing (required)
 
-After tests and lint pass, review the pending changes before committing:
+After tests and lint pass, **always** run `inspect-5p` before committing — including
+in autonomous mode:
 
 ```
 inspect-5p
@@ -282,6 +326,14 @@ def test_issue_get_parses_key():
     assert args.key == "DEV-123"
 ```
 
+### Public repo hygiene
+
+This is a public repo. Before committing:
+- No company names, internal URLs, or real email addresses in code, docs, or beans
+- Use generic examples: `acme.atlassian.net`, `alice@example.com`, `DEV-123`
+- Hardcoded API credentials are intentional (same pattern as gh CLI) — document why
+- Author in pyproject.toml: `Henrique Bastos <henrique@bastos.net>`
+
 ## Tools
 
 - **uv** — package management, running, building
@@ -289,3 +341,4 @@ def test_issue_get_parses_key():
 - **pytest** — testing with coverage
 - **ruff** — linting (line-length=120, select E,F,I,N,UP,RUF)
 - **argparse** — CLI framework (stdlib, dynamic schema support)
+- **responses** — HTTP mocking for tests (same pattern as requests-pro)
