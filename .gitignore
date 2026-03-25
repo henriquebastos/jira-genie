@@ -31,3 +31,5 @@ htmlcov/
 
 # Build
 dist/
+
+.beans/beans.db
