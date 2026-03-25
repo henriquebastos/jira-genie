@@ -9,6 +9,10 @@ import argcomplete
 # Internal imports
 from jira.completers import FieldSetCompleter, TemplateCompleter
 
+# Default OAuth credentials — override with --client-id/--client-secret or env vars
+DEFAULT_CLIENT_ID = "HhpJ9RgICWpmjsb7fd5oV4tulwVlKmJw"
+DEFAULT_CLIENT_SECRET = "ATOA0mBJCckMTjQhYcvyiM95S2kH_M6RfZjg2H1XZPbPwMj_QYp4q45MnPCwLm-om1ln7D4BC7C9"
+
 
 def parse(argv=None):
     """Pure parsing. Returns a Namespace. No I/O."""
@@ -20,7 +24,9 @@ def parse(argv=None):
     # auth subcommands
     auth_parser = subparsers.add_parser("auth")
     auth_sub = auth_parser.add_subparsers(dest="subcommand")
-    auth_sub.add_parser("login")
+    auth_login = auth_sub.add_parser("login")
+    auth_login.add_argument("--client-id", default=None, help="OAuth client ID (overrides default)")
+    auth_login.add_argument("--client-secret", default=None, help="OAuth client secret (overrides default)")
     auth_sub.add_parser("status")
     auth_sub.add_parser("logout")
 
@@ -165,12 +171,11 @@ def cli(argv=None):
 
     if args.command == "auth":
         if args.subcommand == "login":
-            client_id = input("Enter your Atlassian OAuth client_id: ").strip()
-            if not client_id:
-                print(json.dumps({"error": "client_id is required"}), file=sys.stderr)
-                sys.exit(1)
-            client_secret = input("Enter your client_secret (or press Enter to skip): ").strip() or None
+            import os
+
             from jira.auth import login
+            client_id = args.client_id or os.environ.get("JIRA_CLIENT_ID") or DEFAULT_CLIENT_ID
+            client_secret = args.client_secret or os.environ.get("JIRA_CLIENT_SECRET") or DEFAULT_CLIENT_SECRET
             result = login(client_id, client_secret=client_secret)
             print(json.dumps(result))
         elif args.subcommand == "status":

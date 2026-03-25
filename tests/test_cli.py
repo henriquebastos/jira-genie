@@ -23,6 +23,16 @@ class TestParseAuth:
         assert args.instance == "acme"
         assert args.command == "auth"
 
+    def test_auth_login_with_custom_credentials(self):
+        args = parse(["auth", "login", "--client-id", "my-id", "--client-secret", "my-secret"])
+        assert args.client_id == "my-id"
+        assert args.client_secret == "my-secret"
+
+    def test_auth_login_defaults_to_none(self):
+        args = parse(["auth", "login"])
+        assert args.client_id is None
+        assert args.client_secret is None
+
 
 class TestParseFields:
     def test_fields_sync(self):
