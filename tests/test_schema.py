@@ -2,7 +2,7 @@
 import json
 
 # Internal imports
-from jira.schema import build_field_registry, build_type_schema, friendly_name, sync
+from jira.schema import build_field_registry, build_type_schema, friendly_name, resolve_fields, sync
 
 
 class TestFriendlyName:
@@ -81,6 +81,56 @@ class TestBuildTypeSchema:
     def test_fields_without_allowed_values(self):
         schema = build_type_schema(RAW_CREATEMETA)
         assert "allowed" not in schema["fields"]["customfield_10036"]
+
+
+SCHEMA_FIELDS = {
+    "summary": {"id": "summary", "type": "string", "system": True},
+    "status": {"id": "status", "type": "status", "system": True},
+    "parent": {"id": "parent", "type": "issuelink", "system": True},
+    "priority": {"id": "priority", "type": "priority", "system": True},
+    "labels": {"id": "labels", "type": "array", "system": True},
+    "story_points": {"id": "customfield_10036", "type": "number", "name": "Story Points"},
+    "team": {"id": "customfield_10001", "type": "option", "name": "Team"},
+    "components": {"id": "components", "type": "array", "system": True},
+}
+
+
+class TestResolveFields:
+    def test_string_passthrough(self):
+        result = resolve_fields({"summary": "Fix bug"}, SCHEMA_FIELDS)
+        assert result == {"summary": "Fix bug"}
+
+    def test_name_resolution(self):
+        result = resolve_fields({"story_points": 5}, SCHEMA_FIELDS)
+        assert result == {"customfield_10036": 5}
+
+    def test_issuelink_expansion(self):
+        result = resolve_fields({"parent": "DEV-123"}, SCHEMA_FIELDS)
+        assert result == {"parent": {"key": "DEV-123"}}
+
+    def test_system_option_expansion(self):
+        result = resolve_fields({"priority": "P1: High"}, SCHEMA_FIELDS)
+        assert result == {"priority": {"name": "P1: High"}}
+
+    def test_custom_option_expansion(self):
+        result = resolve_fields({"team": "Backend"}, SCHEMA_FIELDS)
+        assert result == {"customfield_10001": {"value": "Backend"}}
+
+    def test_labels_passthrough(self):
+        result = resolve_fields({"labels": ["urgent"]}, SCHEMA_FIELDS)
+        assert result == {"labels": ["urgent"]}
+
+    def test_unknown_field_passthrough(self):
+        result = resolve_fields({"unknown_field": "value"}, SCHEMA_FIELDS)
+        assert result == {"unknown_field": "value"}
+
+    def test_already_structured_passthrough(self):
+        result = resolve_fields({"parent": {"key": "DEV-123"}}, SCHEMA_FIELDS)
+        assert result == {"parent": {"key": "DEV-123"}}
+
+    def test_multiple_fields(self):
+        result = resolve_fields({"summary": "Fix", "story_points": 3, "team": "Backend"}, SCHEMA_FIELDS)
+        assert result == {"summary": "Fix", "customfield_10036": 3, "customfield_10001": {"value": "Backend"}}
 
 
 class TestSync:

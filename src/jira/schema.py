@@ -45,6 +45,42 @@ def build_type_schema(raw_createmeta):
     return {"id": raw_createmeta["id"], "required": required, "fields": fields}
 
 
+# Field types that get value expansion
+SYSTEM_OPTION_TYPES = {"priority", "status", "resolution"}
+LINK_TYPES = {"issuelink"}
+
+
+def resolve_fields(friendly, schema):
+    """Translate friendly names → Jira field IDs AND expand values to API format."""
+    result = {}
+    for key, value in friendly.items():
+        field_info = schema.get(key)
+        if not field_info:
+            # Unknown field — pass through as-is
+            result[key] = value
+            continue
+
+        field_id = field_info["id"]
+        field_type = field_info.get("type", "any")
+
+        # Already structured (dict or list of dicts) — don't double-wrap
+        if isinstance(value, dict):
+            result[field_id] = value
+            continue
+
+        # Expand based on type
+        if field_type in LINK_TYPES and isinstance(value, str):
+            result[field_id] = {"key": value}
+        elif field_type in SYSTEM_OPTION_TYPES and isinstance(value, str):
+            result[field_id] = {"name": value}
+        elif field_type == "option" and not field_info.get("system") and isinstance(value, str):
+            result[field_id] = {"value": value}
+        else:
+            result[field_id] = value
+
+    return result
+
+
 def sync(session, instance_dir, project=None):
     """Fetch from API and write schema.json. I/O boundary."""
     instance_dir = Path(instance_dir)
