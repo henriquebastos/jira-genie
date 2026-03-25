@@ -25,6 +25,35 @@ class IssueSubClient(Client):
     def delete(self, issue_key):
         return super().delete(url=f"rest/api/3/issue/{issue_key}")
 
+    def get_transitions(self, issue_key):
+        result = super().get(url=f"rest/api/3/issue/{issue_key}/transitions")
+        return result.get("transitions", [])
+
+    def transition(self, issue_key, status_name):
+        transitions = self.get_transitions(issue_key)
+        match = next((t for t in transitions if t["name"] == status_name), None)
+        if not match:
+            available = [t["name"] for t in transitions]
+            raise ValueError(f"Transition '{status_name}' not found. Available: {available}")
+        return self.post(url=f"rest/api/3/issue/{issue_key}/transitions", json={"transition": {"id": match["id"]}})
+
+    def assign(self, issue_key, account_id):
+        return self.put(url=f"rest/api/3/issue/{issue_key}/assignee", json={"accountId": account_id})
+
+    def add_comment(self, issue_key, body):
+        return self.post(url=f"rest/api/3/issue/{issue_key}/comment", json={"body": body})
+
+    def get_comments(self, issue_key):
+        result = super().get(url=f"rest/api/3/issue/{issue_key}/comment")
+        return result.get("comments", [])
+
+    def link(self, inward_key, outward_key, link_type):
+        return self.post(url="rest/api/3/issueLink", json={
+            "type": {"name": link_type},
+            "inwardIssue": {"key": inward_key},
+            "outwardIssue": {"key": outward_key},
+        })
+
 
 class SearchSubClient(Client):
     def jql(self, query, fields=None, max_results=50):
@@ -50,8 +79,62 @@ class SearchSubClient(Client):
         return all_issues
 
 
+class UserSubClient(Client):
+    def myself(self):
+        return super().get(url="rest/api/3/myself")
+
+    def search(self, query):
+        return super().get(url="rest/api/3/user/search", params={"query": query})
+
+
+class SprintSubClient(Client):
+    def get(self, sprint_id):
+        return super().get(url=f"rest/agile/1.0/sprint/{sprint_id}")
+
+    def current(self, board_id):
+        result = super().get(url=f"rest/agile/1.0/board/{board_id}/sprint", params={"state": "active"})
+        values = result.get("values", [])
+        return values[0] if values else None
+
+    def list(self, board_id, state=None):
+        params = {}
+        if state:
+            params["state"] = state
+        result = super().get(url=f"rest/agile/1.0/board/{board_id}/sprint", params=params or None)
+        return result.get("values", [])
+
+    def issues(self, sprint_id, fields=None):
+        params = {}
+        if fields:
+            params["fields"] = ",".join(fields)
+        result = super().get(url=f"rest/agile/1.0/sprint/{sprint_id}/issue", params=params or None)
+        return result.get("issues", [])
+
+
+class BoardSubClient(Client):
+    def get(self, board_id):
+        return super().get(url=f"rest/agile/1.0/board/{board_id}")
+
+    def list(self, project_key=None):
+        params = {}
+        if project_key:
+            params["projectKeyOrId"] = project_key
+        result = super().get(url="rest/agile/1.0/board", params=params or None)
+        return result.get("values", [])
+
+    def backlog(self, board_id, fields=None):
+        params = {}
+        if fields:
+            params["fields"] = ",".join(fields)
+        result = super().get(url=f"rest/agile/1.0/board/{board_id}/backlog", params=params or None)
+        return result.get("issues", [])
+
+
 class JiraClient(MainClient):
     def __init__(self, session):
         super().__init__(session, audit=False)
         self.issue = IssueSubClient(session)
         self.search = SearchSubClient(session)
+        self.sprint = SprintSubClient(session)
+        self.board = BoardSubClient(session)
+        self.user = UserSubClient(session)

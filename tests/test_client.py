@@ -2,7 +2,7 @@
 import pytest
 
 # Internal imports
-from jira.client import IssueSubClient, SearchSubClient
+from jira.client import BoardSubClient, IssueSubClient, SearchSubClient, SprintSubClient, UserSubClient
 
 BASE_URL = "https://api.atlassian.com/ex/jira/cloud-abc/"
 
@@ -80,3 +80,140 @@ class TestSearchSubClient:
         assert len(result) == 2
         assert result[0]["key"] == "DEV-1"
         assert result[1]["key"] == "DEV-2"
+
+
+AGILE_URL = "https://api.atlassian.com/ex/jira/cloud-abc/"
+
+
+@pytest.fixture()
+def sprint(responses):
+    from requestspro.sessions import ProSession
+
+    session = ProSession(base_url=AGILE_URL)
+    return SprintSubClient(session)
+
+
+@pytest.fixture()
+def board(responses):
+    from requestspro.sessions import ProSession
+
+    session = ProSession(base_url=AGILE_URL)
+    return BoardSubClient(session)
+
+
+class TestSprintSubClient:
+    def test_get(self, sprint, responses):
+        responses.add("GET", f"{AGILE_URL}rest/agile/1.0/sprint/42", json={"id": 42, "name": "Sprint 5"})
+        result = sprint.get(42)
+        assert result["id"] == 42
+
+    def test_current(self, sprint, responses):
+        responses.add("GET", f"{AGILE_URL}rest/agile/1.0/board/10/sprint", json={
+            "values": [{"id": 42, "state": "active"}],
+        })
+        result = sprint.current(10)
+        assert result["id"] == 42
+
+    def test_list(self, sprint, responses):
+        responses.add("GET", f"{AGILE_URL}rest/agile/1.0/board/10/sprint", json={
+            "values": [{"id": 42}, {"id": 43}],
+        })
+        result = sprint.list(10, state="active,future")
+        assert len(result) == 2
+
+    def test_issues(self, sprint, responses):
+        responses.add("GET", f"{AGILE_URL}rest/agile/1.0/sprint/42/issue", json={
+            "issues": [{"key": "DEV-1"}, {"key": "DEV-2"}],
+        })
+        result = sprint.issues(42)
+        assert len(result) == 2
+
+
+class TestBoardSubClient:
+    def test_get(self, board, responses):
+        responses.add("GET", f"{AGILE_URL}rest/agile/1.0/board/10", json={"id": 10, "name": "DEV board"})
+        result = board.get(10)
+        assert result["id"] == 10
+
+    def test_list(self, board, responses):
+        responses.add("GET", f"{AGILE_URL}rest/agile/1.0/board", json={
+            "values": [{"id": 10}],
+        })
+        result = board.list(project_key="DEV")
+        assert len(result) == 1
+
+    def test_backlog(self, board, responses):
+        responses.add("GET", f"{AGILE_URL}rest/agile/1.0/board/10/backlog", json={
+            "issues": [{"key": "DEV-99"}],
+        })
+        result = board.backlog(10)
+        assert len(result) == 1
+
+
+@pytest.fixture()
+def user(responses):
+    from requestspro.sessions import ProSession
+
+    session = ProSession(base_url=BASE_URL)
+    return UserSubClient(session)
+
+
+class TestUserSubClient:
+    def test_myself(self, user, responses):
+        responses.add("GET", f"{BASE_URL}rest/api/3/myself", json={"displayName": "Alice"})
+        result = user.myself()
+        assert result["displayName"] == "Alice"
+
+    def test_search(self, user, responses):
+        responses.add("GET", f"{BASE_URL}rest/api/3/user/search", json=[{"displayName": "Alice"}])
+        result = user.search("alice")
+        assert len(result) == 1
+
+
+class TestIssueSubClientExtended:
+    def test_get_transitions(self, issue, responses):
+        responses.add("GET", f"{BASE_URL}rest/api/3/issue/DEV-123/transitions", json={
+            "transitions": [{"id": "31", "name": "In Progress"}],
+        })
+        result = issue.get_transitions("DEV-123")
+        assert len(result) == 1
+        assert result[0]["name"] == "In Progress"
+
+    def test_transition(self, issue, responses):
+        responses.add("GET", f"{BASE_URL}rest/api/3/issue/DEV-123/transitions", json={
+            "transitions": [{"id": "31", "name": "In Progress"}, {"id": "41", "name": "Done"}],
+        })
+        responses.add("POST", f"{BASE_URL}rest/api/3/issue/DEV-123/transitions", json={})
+        issue.transition("DEV-123", "Done")
+        req = responses.calls[1].request
+        import json
+        body = json.loads(req.body)
+        assert body["transition"]["id"] == "41"
+
+    def test_assign(self, issue, responses):
+        responses.add("PUT", f"{BASE_URL}rest/api/3/issue/DEV-123/assignee", json={})
+        issue.assign("DEV-123", "account-id-123")
+        import json
+        body = json.loads(responses.calls[0].request.body)
+        assert body["accountId"] == "account-id-123"
+
+    def test_add_comment(self, issue, responses):
+        responses.add("POST", f"{BASE_URL}rest/api/3/issue/DEV-123/comment", json={"id": "1"})
+        result = issue.add_comment("DEV-123", "Hello")
+        assert result["id"] == "1"
+
+    def test_get_comments(self, issue, responses):
+        responses.add("GET", f"{BASE_URL}rest/api/3/issue/DEV-123/comment", json={
+            "comments": [{"id": "1", "body": "Hello"}],
+        })
+        result = issue.get_comments("DEV-123")
+        assert len(result) == 1
+
+    def test_link(self, issue, responses):
+        responses.add("POST", f"{BASE_URL}rest/api/3/issueLink", json={})
+        issue.link("DEV-1", "DEV-2", "blocks")
+        import json
+        body = json.loads(responses.calls[0].request.body)
+        assert body["type"]["name"] == "blocks"
+        assert body["inwardIssue"]["key"] == "DEV-1"
+        assert body["outwardIssue"]["key"] == "DEV-2"
