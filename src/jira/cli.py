@@ -309,13 +309,19 @@ def cli(argv=None):
             print(json.dumps(client.user.search(args.query), indent=2))
     elif args.command == "completion":
         if args.subcommand == "install":
-            print('# Add to your shell config:\n')
-            print('# bash (~/.bashrc):')
-            print('eval "$(register-python-argcomplete jira)"')
-            print('\n# zsh (~/.zshrc):')
-            print('eval "$(register-python-argcomplete jira)"')
-            print('\n# fish (~/.config/fish/config.fish):')
-            print('register-python-argcomplete --shell fish jira | source')
+            import os
+            shell = os.path.basename(os.environ.get("SHELL", ""))
+            if shell == "zsh":
+                print("# Add to ~/.zshrc:\n")
+                print("autoload -U bashcompinit")
+                print("bashcompinit")
+                print('eval "$(register-python-argcomplete jira)"')
+            elif shell == "fish":
+                print("# Add to ~/.config/fish/config.fish:\n")
+                print("register-python-argcomplete --shell fish jira | source")
+            else:
+                print(f"# Add to ~/.{shell}rc:\n")
+                print('eval "$(register-python-argcomplete jira)"')
         elif args.subcommand in ("bash", "zsh"):
             import subprocess
             subprocess.run(["register-python-argcomplete", "jira"])
