@@ -37,7 +37,8 @@ def discover_instance_dir(instance=None, base_dir=BASE_DIR):
                 continue
             config = json.loads(config_file.read_text())
             site = config.get("site", "")
-            if instance in site:
+            # Match against subdomain prefix: "acme" matches "acme.atlassian.net"
+            if site.startswith(instance + ".") or site == instance:
                 return d
         raise ConfigError(f"No instance matching '{instance}' found.")
 

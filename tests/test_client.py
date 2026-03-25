@@ -48,9 +48,10 @@ class TestIssueSubClient:
         assert req.method == "PUT"
 
     def test_delete_sends_delete(self, issue, responses):
-        responses.add("DELETE", f"{BASE_URL}rest/api/3/issue/DEV-123", json={})
-        issue.delete("DEV-123")
+        responses.add("DELETE", f"{BASE_URL}rest/api/3/issue/DEV-123", body="", status=204)
+        result = issue.delete("DEV-123")
         assert responses.calls[0].request.method == "DELETE"
+        assert result is None  # empty body returns None
 
 
 class TestSearchSubClient:

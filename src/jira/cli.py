@@ -169,177 +169,205 @@ def cli(argv=None):
     """Entry point. Parses, dispatches, handles I/O."""
     args = parse(argv)
 
-    if args.command == "auth":
-        if args.subcommand == "login":
-            import os
-
-            from jira.auth import login
-            client_id = args.client_id or os.environ.get("JIRA_CLIENT_ID") or DEFAULT_CLIENT_ID
-            client_secret = args.client_secret or os.environ.get("JIRA_CLIENT_SECRET") or DEFAULT_CLIENT_SECRET
-            result = login(client_id, client_secret=client_secret)
-            print(json.dumps(result))
-        elif args.subcommand == "status":
-            try:
-                from jira.config import ConfigError, discover_instance_dir
-                instance_dir = discover_instance_dir(instance=getattr(args, "instance", None))
-                config = json.loads((instance_dir / "config.json").read_text())
-                safe = {k: v for k, v in config.items() if k != "client_secret"}
-                print(json.dumps({"status": "logged in", **safe}))
-            except (ConfigError, FileNotFoundError):
-                print(json.dumps({"status": "not logged in"}))
-        elif args.subcommand == "logout":
-            try:
-                import shutil
-
-                from jira.config import ConfigError, discover_instance_dir
-                instance_dir = discover_instance_dir(instance=getattr(args, "instance", None))
-                shutil.rmtree(instance_dir)
-                print(json.dumps({"message": "Logged out"}))
-            except (ConfigError, FileNotFoundError):
-                print(json.dumps({"message": "Not logged in"}))
-    elif args.command == "fields":
-        from jira.client import JiraClient
-
-        if args.subcommand == "sync":
-            from jira.schema import sync
-
-            client = JiraClient.from_config(instance=args.instance)
-            instance_dir = _get_instance_dir(args.instance)
-            project = getattr(args, "project", None)
-            sync(client.session, instance_dir, project=project)
-            schema = json.loads((instance_dir / "schema.json").read_text())
-            field_count = len(schema.get("fields", {}))
-            available = schema.get("available_projects", [])
-            synced = list(schema.get("projects", {}).keys())
-            result = {"fields": field_count, "available_projects": available, "synced_projects": synced}
-            if not project and not synced:
-                result["hint"] = "Run `jira fields sync --project KEY` to sync type schemas for a project"
-            print(json.dumps(result))
-        elif args.subcommand == "list":
-            instance_dir = _get_instance_dir(args.instance)
-            schema = json.loads((instance_dir / "schema.json").read_text())
-            fields = schema.get("fields", {})
-            filter_term = getattr(args, "filter", None)
-            if filter_term:
-                fields = {k: v for k, v in fields.items() if filter_term.lower() in k.lower()}
-            print(json.dumps(fields, indent=2))
-        elif args.subcommand == "schema":
-            instance_dir = _get_instance_dir(args.instance)
-            schema = json.loads((instance_dir / "schema.json").read_text())
-            projects = schema.get("projects", {})
-            project = projects.get(args.project, {})
-            types = project.get("types", {})
-            type_schema = types.get(args.type)
-            if type_schema:
-                print(json.dumps(type_schema, indent=2))
-            else:
-                available = list(types.keys())
-                print(json.dumps({"error": f"Type '{args.type}' not found", "available": available}), file=sys.stderr)
-                sys.exit(1)
-    elif args.command == "issue":
-        from jira.client import JiraClient
-        from jira.formatters import format_issue
-
-        client = JiraClient.from_config(instance=args.instance)
-        if args.subcommand == "get":
-            fields = args.fields.split(",") if getattr(args, "fields", None) else None
-            result = client.issue.get(args.key, fields=fields)
-            if getattr(args, "raw", False):
-                print(json.dumps(result, indent=2))
-            else:
-                print(json.dumps(format_issue(result), indent=2))
-        elif args.subcommand == "edit":
-            if getattr(args, "raw_payload", None):
-                payload = json.loads(args.raw_payload)
-            else:
-                fields = {}
-                for s in (args.set or []):
-                    k, v = s.split("=", 1)
-                    fields[k] = v
-                if getattr(args, "json", None):
-                    fields = {**json.loads(args.json), **fields}
-                from jira.schema import resolve_fields
-                schema = _load_schema(args.instance)
-                payload = {"fields": resolve_fields(fields, schema)}
-            client.issue.edit(args.key, payload)
-            print(json.dumps({"message": f"Updated {args.key}"}))
-        elif args.subcommand == "create":
-            if getattr(args, "raw_payload", None):
-                payload = json.loads(args.raw_payload)
-            else:
-                from jira.templates import build_issue_fields, get_default, load_template
-                schema = _load_schema(args.instance)
-                template = None
-                template_name = getattr(args, "template", None)
-                if not template_name:
-                    instance_dir = _get_instance_dir(args.instance)
-                    config_file = instance_dir / "config.json"
-                    template_name = get_default(config_file)
-                if template_name:
-                    instance_dir = _get_instance_dir(args.instance)
-                    template = load_template(template_name, instance_dir / "templates")
-                json_override = json.loads(args.json) if getattr(args, "json", None) else None
-                cli_flags = {}
-                for s in (getattr(args, "set", None) or []):
-                    k, v = s.split("=", 1)
-                    cli_flags[k] = v
-                if getattr(args, "summary", None):
-                    cli_flags["summary"] = args.summary
-                resolved = build_issue_fields(template, json_override, cli_flags, schema)
-                payload = {"fields": resolved}
-            result = client.issue.create(payload)
-            print(json.dumps(result, indent=2))
-        elif args.subcommand == "transition":
-            client.issue.transition(args.key, args.status)
-            print(json.dumps({"message": f"Transitioned {args.key} to {args.status}"}))
-        elif args.subcommand == "assign":
-            client.issue.assign(args.key, args.assignee)
-            print(json.dumps({"message": f"Assigned {args.key}"}))
-        elif args.subcommand == "comment":
-            result = client.issue.add_comment(args.key, args.body)
-            print(json.dumps(result, indent=2))
-        elif args.subcommand == "link":
-            client.issue.link(args.inward_key, args.outward_key, args.link_type)
-            print(json.dumps({"message": f"Linked {args.inward_key} → {args.outward_key}"}))
-    elif args.command == "search":
-        from jira.client import JiraClient
-        from jira.formatters import format_issue_list
-
-        client = JiraClient.from_config(instance=args.instance)
-        fields = args.fields.split(",") if getattr(args, "fields", None) else None
-        results = client.search.jql(args.jql, fields=fields)
-        print(json.dumps(format_issue_list(results), indent=2))
-    elif args.command == "user":
-        from jira.client import JiraClient
-
-        client = JiraClient.from_config(instance=args.instance)
-        if args.subcommand == "me":
-            print(json.dumps(client.user.myself(), indent=2))
-        elif args.subcommand == "search":
-            print(json.dumps(client.user.search(args.query), indent=2))
-    elif args.command == "completion":
-        if args.subcommand == "install":
-            import os
-            shell = os.path.basename(os.environ.get("SHELL", ""))
-            if shell == "zsh":
-                print("# Add to ~/.zshrc:\n")
-                print("autoload -U bashcompinit")
-                print("bashcompinit")
-                print('eval "$(register-python-argcomplete jira)"')
-            elif shell == "fish":
-                print("# Add to ~/.config/fish/config.fish:\n")
-                print("register-python-argcomplete --shell fish jira | source")
-            else:
-                print(f"# Add to ~/.{shell}rc:\n")
-                print('eval "$(register-python-argcomplete jira)"')
-        elif args.subcommand in ("bash", "zsh"):
-            import subprocess
-            subprocess.run(["register-python-argcomplete", "jira"])
-        elif args.subcommand == "fish":
-            import subprocess
-            subprocess.run(["register-python-argcomplete", "--shell", "fish", "jira"])
+    handlers = {
+        "auth": _handle_auth,
+        "fields": _handle_fields,
+        "issue": _handle_issue,
+        "search": _handle_search,
+        "user": _handle_user,
+        "completion": _handle_completion,
+    }
+    handler = handlers.get(args.command)
+    if handler:
+        handler(args)
     elif args.command is None:
         parse(["--help"])
+
+
+def _handle_auth(args, client_id=DEFAULT_CLIENT_ID, client_secret=DEFAULT_CLIENT_SECRET):
+    if args.subcommand == "login":
+        import os
+
+        from jira.auth import login
+        cid = args.client_id or os.environ.get("JIRA_CLIENT_ID") or client_id
+        csecret = args.client_secret or os.environ.get("JIRA_CLIENT_SECRET") or client_secret
+        result = login(cid, client_secret=csecret)
+        print(json.dumps(result))
+    elif args.subcommand == "status":
+        try:
+            from jira.config import ConfigError, discover_instance_dir
+            instance_dir = discover_instance_dir(instance=getattr(args, "instance", None))
+            config = json.loads((instance_dir / "config.json").read_text())
+            safe = {k: v for k, v in config.items() if k != "client_secret"}
+            print(json.dumps({"status": "logged in", **safe}))
+        except (ConfigError, FileNotFoundError):
+            print(json.dumps({"status": "not logged in"}))
+    elif args.subcommand == "logout":
+        try:
+            import shutil
+
+            from jira.config import ConfigError, discover_instance_dir
+            instance_dir = discover_instance_dir(instance=getattr(args, "instance", None))
+            shutil.rmtree(instance_dir)
+            print(json.dumps({"message": "Logged out"}))
+        except (ConfigError, FileNotFoundError):
+            print(json.dumps({"message": "Not logged in"}))
+
+
+def _handle_fields(args):
+    from jira.client import JiraClient
+
+    if args.subcommand == "sync":
+        from jira.schema import sync
+        client = JiraClient.from_config(instance=args.instance)
+        instance_dir = _get_instance_dir(args.instance)
+        project = getattr(args, "project", None)
+        sync(client.session, instance_dir, project=project)
+        schema = json.loads((instance_dir / "schema.json").read_text())
+        field_count = len(schema.get("fields", {}))
+        available = schema.get("available_projects", [])
+        synced = list(schema.get("projects", {}).keys())
+        result = {"fields": field_count, "available_projects": available, "synced_projects": synced}
+        if not project and not synced:
+            result["hint"] = "Run `jira fields sync --project KEY` to sync type schemas for a project"
+        print(json.dumps(result))
+    elif args.subcommand == "list":
+        instance_dir = _get_instance_dir(args.instance)
+        schema = json.loads((instance_dir / "schema.json").read_text())
+        fields = schema.get("fields", {})
+        filter_term = getattr(args, "filter", None)
+        if filter_term:
+            fields = {k: v for k, v in fields.items() if filter_term.lower() in k.lower()}
+        print(json.dumps(fields, indent=2))
+    elif args.subcommand == "schema":
+        instance_dir = _get_instance_dir(args.instance)
+        schema = json.loads((instance_dir / "schema.json").read_text())
+        projects = schema.get("projects", {})
+        project = projects.get(args.project, {})
+        types = project.get("types", {})
+        type_schema = types.get(args.type)
+        if type_schema:
+            print(json.dumps(type_schema, indent=2))
+        else:
+            available = list(types.keys())
+            print(json.dumps({"error": f"Type '{args.type}' not found", "available": available}), file=sys.stderr)
+            sys.exit(1)
+
+
+def _handle_issue(args):
+    from jira.client import JiraClient
+    from jira.formatters import format_issue
+
+    client = JiraClient.from_config(instance=args.instance)
+    if args.subcommand == "get":
+        fields = args.fields.split(",") if getattr(args, "fields", None) else None
+        result = client.issue.get(args.key, fields=fields)
+        if getattr(args, "raw", False):
+            print(json.dumps(result, indent=2))
+        else:
+            print(json.dumps(format_issue(result), indent=2))
+    elif args.subcommand == "edit":
+        if getattr(args, "raw_payload", None):
+            payload = json.loads(args.raw_payload)
+        else:
+            fields = _parse_set_flags(args.set)
+            if getattr(args, "json", None):
+                fields = {**json.loads(args.json), **fields}
+            from jira.schema import resolve_fields
+            schema = _load_schema(args.instance)
+            payload = {"fields": resolve_fields(fields, schema)}
+        client.issue.edit(args.key, payload)
+        print(json.dumps({"message": f"Updated {args.key}"}))
+    elif args.subcommand == "create":
+        if getattr(args, "raw_payload", None):
+            payload = json.loads(args.raw_payload)
+        else:
+            from jira.templates import build_issue_fields, get_default, load_template
+            schema = _load_schema(args.instance)
+            template = None
+            template_name = getattr(args, "template", None)
+            if not template_name:
+                instance_dir = _get_instance_dir(args.instance)
+                config_file = instance_dir / "config.json"
+                template_name = get_default(config_file)
+            if template_name:
+                instance_dir = _get_instance_dir(args.instance)
+                template = load_template(template_name, instance_dir / "templates")
+            json_override = json.loads(args.json) if getattr(args, "json", None) else None
+            cli_flags = _parse_set_flags(getattr(args, "set", None))
+            if getattr(args, "summary", None):
+                cli_flags["summary"] = args.summary
+            resolved = build_issue_fields(template, json_override, cli_flags, schema)
+            payload = {"fields": resolved}
+        result = client.issue.create(payload)
+        print(json.dumps(result, indent=2))
+    elif args.subcommand == "transition":
+        client.issue.transition(args.key, args.status)
+        print(json.dumps({"message": f"Transitioned {args.key} to {args.status}"}))
+    elif args.subcommand == "assign":
+        client.issue.assign(args.key, args.assignee)
+        print(json.dumps({"message": f"Assigned {args.key}"}))
+    elif args.subcommand == "comment":
+        result = client.issue.add_comment(args.key, args.body)
+        print(json.dumps(result, indent=2))
+    elif args.subcommand == "link":
+        client.issue.link(args.inward_key, args.outward_key, args.link_type)
+        print(json.dumps({"message": f"Linked {args.inward_key} → {args.outward_key}"}))
+
+
+def _handle_search(args):
+    from jira.client import JiraClient
+    from jira.formatters import format_issue_list
+
+    client = JiraClient.from_config(instance=args.instance)
+    fields = args.fields.split(",") if getattr(args, "fields", None) else None
+    results = client.search.jql(args.jql, fields=fields)
+    print(json.dumps(format_issue_list(results), indent=2))
+
+
+def _handle_user(args):
+    from jira.client import JiraClient
+
+    client = JiraClient.from_config(instance=args.instance)
+    if args.subcommand == "me":
+        print(json.dumps(client.user.myself(), indent=2))
+    elif args.subcommand == "search":
+        print(json.dumps(client.user.search(args.query), indent=2))
+
+
+def _handle_completion(args):
+    if args.subcommand == "install":
+        import os
+        shell = os.path.basename(os.environ.get("SHELL", ""))
+        if shell == "zsh":
+            print("# Add to ~/.zshrc:\n")
+            print("autoload -U bashcompinit")
+            print("bashcompinit")
+            print('eval "$(register-python-argcomplete jira)"')
+        elif shell == "fish":
+            print("# Add to ~/.config/fish/config.fish:\n")
+            print("register-python-argcomplete --shell fish jira | source")
+        else:
+            print(f"# Add to ~/.{shell}rc:\n")
+            print('eval "$(register-python-argcomplete jira)"')
+    elif args.subcommand in ("bash", "zsh"):
+        import subprocess
+        subprocess.run(["register-python-argcomplete", "jira"])
+    elif args.subcommand == "fish":
+        import subprocess
+        subprocess.run(["register-python-argcomplete", "--shell", "fish", "jira"])
+
+
+def _parse_set_flags(set_args):
+    """Parse --set key=value flags into a dict. Raises SystemExit on invalid format."""
+    fields = {}
+    for s in (set_args or []):
+        if "=" not in s:
+            print(json.dumps({"error": f"Invalid --set format: '{s}'. Expected key=value"}), file=sys.stderr)
+            sys.exit(1)
+        k, v = s.split("=", 1)
+        fields[k] = v
+    return fields
 
 
 def _get_instance_dir(instance=None):

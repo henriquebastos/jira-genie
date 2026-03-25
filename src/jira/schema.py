@@ -59,7 +59,8 @@ def build_type_schema(raw_createmeta):
 # Field types that get value expansion
 SYSTEM_OPTION_TYPES = {"priority", "status", "resolution"}
 LINK_TYPES = {"issuelink"}
-KEY_TYPES = {"project", "parent", "any"}  # Types that expand string → {"key": value}
+KEY_TYPES = {"project"}  # Types that expand string → {"key": value}
+KEY_FIELDS = {"parent"}  # Specific field IDs that expand string → {"key": value}
 NAME_TYPES = {"issuetype"}  # Types that expand string → {"name": value}
 # System array fields where items are {"name": value}
 NAMED_ARRAY_FIELDS = {"components", "fixVersions", "versions"}
@@ -86,7 +87,7 @@ def resolve_fields(friendly, schema):
         # Expand based on type
         if field_type in LINK_TYPES and isinstance(value, str):
             result[field_id] = {"key": value}
-        elif field_type in KEY_TYPES and isinstance(value, str):
+        elif (field_type in KEY_TYPES or field_id in KEY_FIELDS) and isinstance(value, str):
             result[field_id] = {"key": value}
         elif field_type in NAME_TYPES and isinstance(value, str):
             result[field_id] = {"name": value}

@@ -114,12 +114,15 @@ def save_login_config(base_dir, cloud_id, site, client_id, refresh_token, refres
     config = {"cloud_id": cloud_id, "site": site, "client_id": client_id}
     if client_secret:
         config["client_secret"] = client_secret
-    (instance_dir / "config.json").write_text(json.dumps(config, indent=2))
+    config_path = instance_dir / "config.json"
+    config_path.write_text(json.dumps(config, indent=2))
+    config_path.chmod(0o600)
 
     # Save refresh token via FileCache (same interface as TokenStore backend)
     refresh_cache = FileCache(instance_dir / "refresh.json")
     refresh_store = TokenStore(refresh_cache, key="refresh_token")
     refresh_store(refresh_token, refresh_expires_in)
+    (instance_dir / "refresh.json").chmod(0o600)
 
     # Set as default instance
     base_config_path = base / "config.json"
@@ -148,7 +151,10 @@ def build_authorize_url(client_id, code_challenge, redirect_uri=REDIRECT_URI, sc
     return f"{JiraAuth.AUTH_URL}?{urlencode(params)}"
 
 
-def wait_for_callback(port=CALLBACK_PORT):
+CALLBACK_TIMEOUT = 300  # 5 minutes
+
+
+def wait_for_callback(port=CALLBACK_PORT, timeout=CALLBACK_TIMEOUT):
     """Start a local HTTP server and wait for the OAuth callback. Returns the authorization code."""
     result = {}
 
@@ -174,7 +180,14 @@ def wait_for_callback(port=CALLBACK_PORT):
             pass  # Suppress server logs
 
     server = HTTPServer(("localhost", port), CallbackHandler)
-    server.serve_forever()
+    server.timeout = timeout
+    # Use handle_request in a loop with timeout instead of serve_forever
+    server_thread = threading.Thread(target=server.serve_forever)
+    server_thread.start()
+    server_thread.join(timeout=timeout)
+    if server_thread.is_alive():
+        server.shutdown()
+        raise JiraAuthError(f"Login timed out after {timeout} seconds. No callback received.")
 
     if "error" in result:
         raise JiraAuthError(f"OAuth callback error: {result['error']}")

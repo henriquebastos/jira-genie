@@ -27,7 +27,9 @@ class IssueSubClient(Client):
         return self.put(url=f"rest/api/3/issue/{issue_key}", json=payload)
 
     def delete(self, issue_key):
-        self.session.request("DELETE", f"rest/api/3/issue/{issue_key}").raise_for_status()
+        response = self.session.request("DELETE", f"rest/api/3/issue/{issue_key}")
+        response.raise_for_status()
+        return response.json() if response.content else None
 
     def get_transitions(self, issue_key):
         result = super().get(url=f"rest/api/3/issue/{issue_key}/transitions")
