@@ -103,20 +103,31 @@ def resolve_fields(friendly, schema):
 
 
 def sync(session, instance_dir, project=None):
-    """Fetch from API and write schema.json. I/O boundary."""
+    """Fetch from API and write schema.json. I/O boundary.
+
+    Without --project: syncs field list + discovers available project keys.
+    With --project: also syncs type schemas (required fields, allowed values) for that project.
+    Merges with existing schema — previously synced project schemas are preserved.
+    """
     instance_dir = Path(instance_dir)
+
+    # Load existing schema to merge with
+    schema_path = instance_dir / "schema.json"
+    existing = json.loads(schema_path.read_text()) if schema_path.exists() else {}
 
     # Fetch all fields
     raw_fields = session.get("rest/api/3/field").json()
     registry = build_field_registry(raw_fields)
 
-    # Fetch per-project per-type schemas
-    projects = {}
-    if project:
-        project_keys = [project]
-    else:
-        # TODO: discover projects from accessible resources
-        project_keys = []
+    # Discover available projects
+    raw_projects = session.get("rest/api/3/project").json()
+    available_projects = [p["key"] for p in raw_projects]
+
+    # Preserve existing project schemas, sync requested one
+    projects = existing.get("projects", {})
+
+    # Only fetch type schemas when a specific project is requested
+    project_keys = [project] if project else []
 
     for proj_key in project_keys:
         resp = session.get(f"rest/api/3/issue/createmeta/{proj_key}/issuetypes")
@@ -130,6 +141,7 @@ def sync(session, instance_dir, project=None):
     schema = {
         "synced_at": datetime.now(UTC).isoformat(),
         "fields": registry,
+        "available_projects": available_projects,
         "projects": projects,
     }
-    (instance_dir / "schema.json").write_text(json.dumps(schema, indent=2))
+    schema_path.write_text(json.dumps(schema, indent=2))

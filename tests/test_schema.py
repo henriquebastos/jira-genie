@@ -134,36 +134,71 @@ class TestResolveFields:
 
 
 class TestSync:
-    def test_writes_schema_json(self, tmp_path, responses):
-        # Mock the field list endpoint
-        responses.add("GET", "https://api.atlassian.com/ex/jira/cloud-abc/rest/api/3/field", json=RAW_FIELDS)
+    def setup_mocks(self, responses):
+        """Common mocks for sync tests."""
+        base = "https://api.atlassian.com/ex/jira/cloud-abc/"
+        responses.add("GET", f"{base}rest/api/3/field", json=RAW_FIELDS)
+        responses.add("GET", f"{base}rest/api/3/project", json=[
+            {"key": "DEV", "name": "Development"},
+            {"key": "OPS", "name": "Operations"},
+        ])
+        responses.add("GET", f"{base}rest/api/3/issue/createmeta/DEV/issuetypes",
+                       json={"issueTypes": [{"id": "10002", "name": "Task"}]})
+        responses.add("GET", f"{base}rest/api/3/issue/createmeta/DEV/issuetypes/10002",
+                       json=RAW_CREATEMETA)
 
-        # Mock createmeta endpoints
-        responses.add(
-            "GET",
-            "https://api.atlassian.com/ex/jira/cloud-abc/rest/api/3/issue/createmeta/DEV/issuetypes",
-            json={"issueTypes": [{"id": "10002", "name": "Task"}]},
-        )
-        responses.add(
-            "GET",
-            "https://api.atlassian.com/ex/jira/cloud-abc/rest/api/3/issue/createmeta/DEV/issuetypes/10002",
-            json=RAW_CREATEMETA,
-        )
-
+    def make_instance_dir(self, tmp_path):
         instance_dir = tmp_path / "cloud-abc"
         instance_dir.mkdir()
         (instance_dir / "config.json").write_text(json.dumps({
             "cloud_id": "cloud-abc",
             "site": "acme.atlassian.net",
         }))
+        return instance_dir
+
+    def test_sync_with_project(self, tmp_path, responses):
+        self.setup_mocks(responses)
+        instance_dir = self.make_instance_dir(tmp_path)
 
         from requestspro.sessions import ProSession
-
         session = ProSession(base_url="https://api.atlassian.com/ex/jira/cloud-abc/")
         sync(session, instance_dir, project="DEV")
 
         schema = json.loads((instance_dir / "schema.json").read_text())
         assert "fields" in schema
-        assert "projects" in schema
         assert "DEV" in schema["projects"]
-        assert schema["synced_at"] is not None
+        assert "available_projects" in schema
+        assert schema["available_projects"] == ["DEV", "OPS"]
+
+    def test_sync_without_project_discovers_but_skips_types(self, tmp_path, responses):
+        base = "https://api.atlassian.com/ex/jira/cloud-abc/"
+        responses.add("GET", f"{base}rest/api/3/field", json=RAW_FIELDS)
+        responses.add("GET", f"{base}rest/api/3/project", json=[
+            {"key": "DEV", "name": "Development"},
+            {"key": "OPS", "name": "Operations"},
+        ])
+        instance_dir = self.make_instance_dir(tmp_path)
+
+        from requestspro.sessions import ProSession
+        session = ProSession(base_url="https://api.atlassian.com/ex/jira/cloud-abc/")
+        sync(session, instance_dir)
+
+        schema = json.loads((instance_dir / "schema.json").read_text())
+        assert schema["available_projects"] == ["DEV", "OPS"]
+        assert schema["projects"] == {}  # no type schemas fetched
+
+    def test_sync_preserves_existing_project_schemas(self, tmp_path, responses):
+        self.setup_mocks(responses)
+        instance_dir = self.make_instance_dir(tmp_path)
+
+        # Pre-existing schema with OPS project
+        existing = {"projects": {"OPS": {"types": {"Bug": {"id": "99"}}}}}
+        (instance_dir / "schema.json").write_text(json.dumps(existing))
+
+        from requestspro.sessions import ProSession
+        session = ProSession(base_url="https://api.atlassian.com/ex/jira/cloud-abc/")
+        sync(session, instance_dir, project="DEV")
+
+        schema = json.loads((instance_dir / "schema.json").read_text())
+        assert "DEV" in schema["projects"]  # newly synced
+        assert "OPS" in schema["projects"]  # preserved

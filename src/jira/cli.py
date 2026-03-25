@@ -205,11 +205,16 @@ def cli(argv=None):
 
             client = JiraClient.from_config(instance=args.instance)
             instance_dir = _get_instance_dir(args.instance)
-            sync(client.session, instance_dir, project=getattr(args, "project", None))
+            project = getattr(args, "project", None)
+            sync(client.session, instance_dir, project=project)
             schema = json.loads((instance_dir / "schema.json").read_text())
             field_count = len(schema.get("fields", {}))
-            project_count = len(schema.get("projects", {}))
-            print(json.dumps({"message": f"Synced {field_count} fields, {project_count} project(s)"}))
+            available = schema.get("available_projects", [])
+            synced = list(schema.get("projects", {}).keys())
+            result = {"fields": field_count, "available_projects": available, "synced_projects": synced}
+            if not project and not synced:
+                result["hint"] = "Run `jira fields sync --project KEY` to sync type schemas for a project"
+            print(json.dumps(result))
         elif args.subcommand == "list":
             instance_dir = _get_instance_dir(args.instance)
             schema = json.loads((instance_dir / "schema.json").read_text())
