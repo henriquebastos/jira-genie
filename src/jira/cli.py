@@ -3,6 +3,12 @@ import argparse
 import json
 import sys
 
+# Pip imports
+import argcomplete
+
+# Internal imports
+from jira.completers import FieldSetCompleter, TemplateCompleter
+
 
 def parse(argv=None):
     """Pure parsing. Returns a Namespace. No I/O."""
@@ -43,15 +49,15 @@ def parse(argv=None):
 
     issue_edit = issue_sub.add_parser("edit")
     issue_edit.add_argument("key", help="Issue key")
-    issue_edit.add_argument("--set", action="append", help="key=value field")
+    issue_edit.add_argument("--set", action="append", help="key=value field").completer = FieldSetCompleter()
     issue_edit.add_argument("--json", help="JSON override string")
     issue_edit.add_argument("--raw-payload", help="Raw JSON payload (bypass resolution)")
 
     issue_create = issue_sub.add_parser("create")
     issue_create.add_argument("--summary", help="Issue summary")
-    issue_create.add_argument("--template", help="Template name")
+    issue_create.add_argument("--template", help="Template name").completer = TemplateCompleter()
     issue_create.add_argument("--json", help="JSON override string")
-    issue_create.add_argument("--set", action="append", help="key=value field")
+    issue_create.add_argument("--set", action="append", help="key=value field").completer = FieldSetCompleter()
     issue_create.add_argument("--raw-payload", help="Raw JSON payload (bypass resolution)")
 
     issue_transition = issue_sub.add_parser("transition")
@@ -82,7 +88,7 @@ def parse(argv=None):
 
     bulk_edit = bulk_sub.add_parser("edit")
     bulk_edit.add_argument("keys", nargs="+", help="Issue keys")
-    bulk_edit.add_argument("--set", action="append", help="key=value field")
+    bulk_edit.add_argument("--set", action="append", help="key=value field").completer = FieldSetCompleter()
 
     # template subcommands
     template_parser = subparsers.add_parser("template")
@@ -141,6 +147,15 @@ def parse(argv=None):
 
     user_sub.add_parser("me")
 
+    # completion subcommand
+    completion_parser = subparsers.add_parser("completion")
+    completion_sub = completion_parser.add_subparsers(dest="subcommand")
+    completion_sub.add_parser("install", help="Show shell setup instructions")
+    completion_sub.add_parser("bash", help="Output bash completion script")
+    completion_sub.add_parser("zsh", help="Output zsh completion script")
+    completion_sub.add_parser("fish", help="Output fish completion script")
+
+    argcomplete.autocomplete(parser)
     return parser.parse_args(argv)
 
 
@@ -292,6 +307,21 @@ def cli(argv=None):
             print(json.dumps(client.user.myself(), indent=2))
         elif args.subcommand == "search":
             print(json.dumps(client.user.search(args.query), indent=2))
+    elif args.command == "completion":
+        if args.subcommand == "install":
+            print('# Add to your shell config:\n')
+            print('# bash (~/.bashrc):')
+            print('eval "$(register-python-argcomplete jira)"')
+            print('\n# zsh (~/.zshrc):')
+            print('eval "$(register-python-argcomplete jira)"')
+            print('\n# fish (~/.config/fish/config.fish):')
+            print('register-python-argcomplete --shell fish jira | source')
+        elif args.subcommand in ("bash", "zsh"):
+            import subprocess
+            subprocess.run(["register-python-argcomplete", "jira"])
+        elif args.subcommand == "fish":
+            import subprocess
+            subprocess.run(["register-python-argcomplete", "--shell", "fish", "jira"])
     elif args.command is None:
         parse(["--help"])
 
