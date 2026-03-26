@@ -1,3 +1,22 @@
+## [0.2.0] - 2026-03-26
+
+### 🚀 Features
+
+- Add jira agent skill, finalize jira-genie rename and description #closes bean-137d4311
+
+### 🐛 Bug Fixes
+
+- Inspect-5p findings — security, correctness, design improvements
+
+### 📚 Documentation
+
+- Export beans journal (sanitized)
+- Apply retro improvements to conventions and global AGENTS.md
+- Update CHANGELOG.md
+
+### ⚙️ Miscellaneous Tasks
+
+- Rename package to jira-genie, bump to v0.2.0 #closes bean-9fcd9d43
 ## [0.1.0] - 2026-03-25
 
 ### 🚀 Features
