@@ -64,6 +64,17 @@ KEY_FIELDS = {"parent"}  # Specific field IDs that expand string → {"key": val
 NAME_TYPES = {"issuetype"}  # Types that expand string → {"name": value}
 # System array fields where items are {"name": value}
 NAMED_ARRAY_FIELDS = {"components", "fixVersions", "versions"}
+# Fields that require Atlassian Document Format (ADF) — strings get auto-wrapped
+ADF_FIELDS = {"description", "environment"}
+
+
+def text_to_adf(text):
+    """Wrap a plain string in minimal Atlassian Document Format (doc > paragraph > text)."""
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}],
+    }
 
 
 def resolve_fields(friendly, schema):
@@ -82,6 +93,11 @@ def resolve_fields(friendly, schema):
         # Already structured (dict or list of dicts) — don't double-wrap
         if isinstance(value, dict):
             result[field_id] = value
+            continue
+
+        # ADF fields: wrap plain strings into minimal doc > paragraph > text
+        if field_id in ADF_FIELDS and isinstance(value, str):
+            result[field_id] = text_to_adf(value)
             continue
 
         # Expand based on type

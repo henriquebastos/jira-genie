@@ -57,6 +57,10 @@ jira search "project = DEV" --fields summary,status,assignee,parent
 
 The output is an array of `{key, summary, status, assignee, priority, type}` objects.
 
+**Pagination:** Search returns up to 50 results. For larger result sets, narrow
+the JQL query (add date ranges, status filters, etc.) rather than expecting all
+results at once.
+
 ## Reading Issues
 
 ```bash
@@ -91,6 +95,43 @@ jira issue create --json '{
 
 Field names are resolved automatically: `story_points` → `customfield_10036`,
 `team` → `customfield_10001`, etc.
+
+Returns: `{"id": "12345", "key": "DEV-125", "self": "https://..."}`.
+
+### Setting descriptions
+
+Plain strings are auto-converted to Atlassian Document Format (ADF):
+
+```bash
+jira issue create --json '{
+  "project": "DEV",
+  "issuetype": "Task",
+  "summary": "Fix the auth flow",
+  "description": "Users are getting 401 errors after token refresh."
+}'
+```
+
+For richer content (headings, lists, code blocks), pass the full ADF structure:
+
+```bash
+jira issue create --json '{
+  "project": "DEV",
+  "issuetype": "Task",
+  "summary": "Fix the auth flow",
+  "description": {
+    "type": "doc",
+    "version": 1,
+    "content": [
+      {
+        "type": "paragraph",
+        "content": [{"type": "text", "text": "Users are getting 401 errors after token refresh."}]
+      }
+    ]
+  }
+}'
+```
+
+Dict values pass through untouched — no double-wrapping.
 
 ### With a template
 
@@ -137,10 +178,14 @@ When the user wants a template based on how they already create tickets:
 jira search "reporter = currentUser() AND type = Task ORDER BY created DESC" --fields summary,parent,components,labels,priority
 ```
 
-### Step 2: Inspect one ticket's fields
+### Step 2: Inspect fields and schema
 
 ```bash
+# Look at a real ticket's fields
 jira issue get DEV-123 --raw
+
+# Check all available fields for that type (required fields, allowed values)
+jira fields schema --project DEV --type Task
 ```
 
 Look at the fields that are consistent across tickets (project, issuetype, parent,
@@ -207,16 +252,20 @@ jira issue assign DEV-123 alice@example.com
 # Comment
 jira issue comment DEV-123 "Fixed in commit abc1234"
 
-# Link issues
+# Link issues (--type values: "blocks", "is blocked by", "relates to", "duplicates", "is duplicated by", "clones", "is cloned by")
 jira issue link DEV-123 DEV-456 --type blocks
 ```
 
 ## Bulk Operations
 
+Only bulk edit is supported. Use it to update the same field(s) across multiple issues:
+
 ```bash
 jira bulk edit DEV-1 DEV-2 DEV-3 --set parent=DEV-100
 jira bulk edit DEV-1 DEV-2 --set priority="P1: High"
 ```
+
+For bulk creation or transitions, loop over individual commands.
 
 ## Schema Inspection
 
@@ -237,12 +286,18 @@ The schema output tells you exactly what to pass when creating or editing issues
 
 ## Sprints and Boards
 
+Discover the board ID first, then use it for sprint operations:
+
 ```bash
+# Find the board for a project
+jira board list --project DEV
+
+# Sprint operations (use the board ID from above)
 jira sprint current --board 42
 jira sprint list --board 42 --state active,future
 jira sprint issues 123 --fields summary,status,assignee
 
-jira board list --project DEV
+# Backlog
 jira board backlog 42
 ```
 
@@ -252,6 +307,25 @@ jira board backlog 42
 jira user me                # current user
 jira user search "alice"    # find users
 ```
+
+## Error Handling
+
+When a command fails, read the error message and recover:
+
+- **Field validation error** on create/edit → check required fields and allowed values:
+  ```bash
+  jira fields schema --project DEV --type Task
+  ```
+- **Unknown field name** → list available fields and find the correct name:
+  ```bash
+  jira fields list --filter <keyword>
+  ```
+- **Invalid transition** → the issue's current status may not allow that transition.
+  Check the issue's current status with `jira issue get DEV-123` and try the
+  appropriate intermediate transition.
+- **Permission denied / 403** → the authenticated user lacks permission for that
+  project or operation. Verify with `jira auth status` and `jira user me`.
+- **Invalid JQL** → simplify the query, check field names and function syntax.
 
 ## Field Resolution Reference
 
@@ -266,6 +340,8 @@ When using `--json` or `--set`, field names and values are resolved automaticall
 | `"team": "Backend"` | `"customfield_10001": {"value": "Backend"}` |
 | `"components": ["API"]` | `"components": [{"name": "API"}]` |
 | `"story_points": 5` | `"customfield_10036": 5` |
+| `"description": "plain text"` | auto-wrapped into ADF `doc > paragraph > text` |
+| `"description": {ADF doc}` | passed through as-is (dicts are never wrapped) |
 
 Use `--raw-payload` to bypass all resolution and send exact JSON to the API.
 

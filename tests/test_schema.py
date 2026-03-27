@@ -92,6 +92,8 @@ SCHEMA_FIELDS = {
     "story_points": {"id": "customfield_10036", "type": "number", "name": "Story Points"},
     "team": {"id": "customfield_10001", "type": "option", "name": "Team"},
     "components": {"id": "components", "type": "array", "system": True},
+    "description": {"id": "description", "type": "string", "system": True},
+    "environment": {"id": "environment", "type": "string", "system": True},
 }
 
 
@@ -127,6 +129,31 @@ class TestResolveFields:
     def test_already_structured_passthrough(self):
         result = resolve_fields({"parent": {"key": "DEV-123"}}, SCHEMA_FIELDS)
         assert result == {"parent": {"key": "DEV-123"}}
+
+    def test_string_description_wrapped_as_adf(self):
+        result = resolve_fields({"description": "Fix the bug"}, SCHEMA_FIELDS)
+        assert result == {"description": {
+            "type": "doc",
+            "version": 1,
+            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Fix the bug"}]}],
+        }}
+
+    def test_string_environment_wrapped_as_adf(self):
+        result = resolve_fields({"environment": "Production"}, SCHEMA_FIELDS)
+        assert result == {"environment": {
+            "type": "doc",
+            "version": 1,
+            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Production"}]}],
+        }}
+
+    def test_dict_description_passthrough(self):
+        adf = {
+            "type": "doc",
+            "version": 1,
+            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Already ADF"}]}],
+        }
+        result = resolve_fields({"description": adf}, SCHEMA_FIELDS)
+        assert result == {"description": adf}
 
     def test_multiple_fields(self):
         result = resolve_fields({"summary": "Fix", "story_points": 3, "team": "Backend"}, SCHEMA_FIELDS)
