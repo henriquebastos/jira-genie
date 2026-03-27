@@ -1,3 +1,12 @@
+## [0.2.2] - 2026-03-27
+
+### 🐛 Bug Fixes
+
+- Switch to setuptools build backend for Homebrew compatibility, bump v0.2.2
+
+### 📚 Documentation
+
+- Update CHANGELOG.md
 ## [0.2.1] - 2026-03-27
 
 ### 🐛 Bug Fixes
