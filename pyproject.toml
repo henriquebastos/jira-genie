@@ -7,7 +7,7 @@ license = "MIT"
 authors = [
     { name = "Henrique Bastos", email = "henrique@bastos.net" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "argcomplete>=3.6.3",
     "requests-pro",
