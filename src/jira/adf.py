@@ -76,6 +76,11 @@ def convert_inline(children, marks=None):
             node["marks"] = current_marks
             result.append(node)
 
+        elif child_type == "link":
+            url = child.get("attrs", {}).get("url", "")
+            link_mark = {"type": "link", "attrs": {"href": url}}
+            result.extend(convert_inline(child.get("children", []), [*marks, link_mark]))
+
         elif child_type in INLINE_MARKS:
             mark = {"type": INLINE_MARKS[child_type]}
             result.extend(convert_inline(child.get("children", []), [*marks, mark]))

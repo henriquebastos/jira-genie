@@ -107,3 +107,23 @@ class TestInlineMarks:
         assert content[0] == {"type": "text", "text": "plain "}
         assert content[1] == {"type": "text", "text": "bold", "marks": [{"type": "strong"}]}
         assert content[2] == {"type": "text", "text": " plain"}
+
+
+class TestLinks:
+    """Markdown links → ADF text nodes with link marks."""
+
+    def test_simple_link(self):
+        result = markdown_to_adf("[click here](https://example.com)")
+        assert result["content"] == [
+            {"type": "paragraph", "content": [
+                {"type": "text", "text": "click here", "marks": [
+                    {"type": "link", "attrs": {"href": "https://example.com"}},
+                ]},
+            ]},
+        ]
+
+    def test_bold_link(self):
+        result = markdown_to_adf("**[bold link](https://example.com)**")
+        marks = result["content"][0]["content"][0]["marks"]
+        mark_types = {m["type"] for m in marks}
+        assert mark_types == {"strong", "link"}
