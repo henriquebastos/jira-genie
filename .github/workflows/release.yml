@@ -59,3 +59,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  homebrew:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew formula
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: jira-genie
+          homebrew-tap: henriquebastos/homebrew-tap
+          tag-name: ${{ github.event.release.tag_name }}
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
