@@ -127,3 +127,45 @@ class TestLinks:
         marks = result["content"][0]["content"][0]["marks"]
         mark_types = {m["type"] for m in marks}
         assert mark_types == {"strong", "link"}
+
+
+class TestLists:
+    """Markdown lists → ADF bulletList/orderedList with listItem nodes."""
+
+    def test_bullet_list(self):
+        result = markdown_to_adf("- alpha\n- beta")
+        assert result["content"] == [
+            {"type": "bulletList", "content": [
+                {"type": "listItem", "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "alpha"}]},
+                ]},
+                {"type": "listItem", "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "beta"}]},
+                ]},
+            ]},
+        ]
+
+    def test_ordered_list(self):
+        result = markdown_to_adf("1. first\n2. second")
+        assert result["content"] == [
+            {"type": "orderedList", "content": [
+                {"type": "listItem", "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "first"}]},
+                ]},
+                {"type": "listItem", "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "second"}]},
+                ]},
+            ]},
+        ]
+
+    def test_nested_list(self):
+        result = markdown_to_adf("- parent\n  - child")
+        outer = result["content"][0]
+        assert outer["type"] == "bulletList"
+        first_item = outer["content"][0]
+        assert first_item["type"] == "listItem"
+        # First item has paragraph + nested list
+        assert first_item["content"][0]["type"] == "paragraph"
+        assert first_item["content"][1]["type"] == "bulletList"
+        nested_item = first_item["content"][1]["content"][0]
+        assert nested_item["content"][0] == {"type": "paragraph", "content": [{"type": "text", "text": "child"}]}

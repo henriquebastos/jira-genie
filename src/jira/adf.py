@@ -43,6 +43,41 @@ def convert_node(node):
     if node_type == "thematic_break":
         return {"type": "rule"}
 
+    if node_type == "list":
+        ordered = node.get("attrs", {}).get("ordered", False)
+        list_type = "orderedList" if ordered else "bulletList"
+        items = []
+        for child in node.get("children", []):
+            item = convert_list_item(child)
+            if item:
+                items.append(item)
+        if items:
+            return {"type": list_type, "content": items}
+        return None
+
+    return None
+
+
+def convert_list_item(node):
+    """Convert a mistune list_item AST node to an ADF listItem."""
+    content = []
+    for child in node.get("children", []):
+        child_type = child["type"]
+        if child_type == "block_text":
+            # block_text contains inline children — wrap in paragraph
+            inline = convert_inline(child.get("children", []))
+            if inline:
+                content.append({"type": "paragraph", "content": inline})
+        elif child_type == "paragraph":
+            adf_node = convert_node(child)
+            if adf_node:
+                content.append(adf_node)
+        elif child_type == "list":
+            adf_node = convert_node(child)
+            if adf_node:
+                content.append(adf_node)
+    if content:
+        return {"type": "listItem", "content": content}
     return None
 
 
