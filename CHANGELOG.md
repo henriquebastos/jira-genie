@@ -1,3 +1,20 @@
+## [0.2.1] - 2026-03-27
+
+### 🐛 Bug Fixes
+
+- Show help when subcommand is missing instead of doing nothing #closes bean-412ca498
+- Switch build backend from uv_build to hatchling for Homebrew compatibility
+
+### 📚 Documentation
+
+- Update CHANGELOG.md
+- Add banner to README and assets
+- Add Homebrew install instructions to README
+
+### ⚙️ Miscellaneous Tasks
+
+- Add homebrew tap auto-update to release workflow
+- Bump to v0.2.1
 ## [0.2.0] - 2026-03-26
 
 ### 🚀 Features
