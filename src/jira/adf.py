@@ -1,5 +1,14 @@
 # Pip imports
 import mistune
+from mistune.plugins.formatting import strikethrough
+
+# Mistune inline type → ADF mark type
+INLINE_MARKS = {
+    "strong": "strong",
+    "emphasis": "em",
+    "codespan": "code",
+    "strikethrough": "strike",
+}
 
 
 def convert_node(node):
@@ -15,8 +24,7 @@ def convert_node(node):
     if node_type == "heading":
         level = node["attrs"]["level"]
         content = convert_inline(node.get("children", []))
-        result = {"type": "heading", "attrs": {"level": level}, "content": content}
-        return result
+        return {"type": "heading", "attrs": {"level": level}, "content": content}
 
     if node_type == "block_code":
         text = node["raw"]
@@ -48,19 +56,36 @@ def convert_children(nodes):
     return result
 
 
-def convert_inline(children):
+def convert_inline(children, marks=None):
     """Convert a list of mistune inline AST nodes to ADF inline nodes."""
     result = []
+    marks = marks or []
+
     for child in children:
         child_type = child["type"]
+
         if child_type == "text":
-            result.append({"type": "text", "text": child["raw"]})
+            node = {"type": "text", "text": child["raw"]}
+            if marks:
+                node["marks"] = list(marks)
+            result.append(node)
+
+        elif child_type == "codespan":
+            current_marks = [*marks, {"type": "code"}]
+            node = {"type": "text", "text": child["raw"]}
+            node["marks"] = current_marks
+            result.append(node)
+
+        elif child_type in INLINE_MARKS:
+            mark = {"type": INLINE_MARKS[child_type]}
+            result.extend(convert_inline(child.get("children", []), [*marks, mark]))
+
     return result
 
 
 def markdown_to_adf(text) -> dict:
     """Convert a Markdown string to an Atlassian Document Format (ADF) document."""
-    md = mistune.create_markdown(renderer="ast")
+    md = mistune.create_markdown(renderer="ast", plugins=[strikethrough])
     ast = md(text)
     content = convert_children(ast)
     return {"type": "doc", "version": 1, "content": content}

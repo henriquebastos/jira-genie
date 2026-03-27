@@ -3,6 +3,7 @@ from jira.adf import markdown_to_adf
 
 
 class TestBlockNodes:
+    """Block-level Markdown elements → ADF top-level nodes."""
     def test_plain_text(self):
         result = markdown_to_adf("Hello world")
         assert result == {
@@ -57,3 +58,52 @@ class TestBlockNodes:
         ]
 
 
+
+
+class TestInlineMarks:
+    """Inline Markdown formatting → ADF text nodes with marks."""
+
+    def test_bold(self):
+        result = markdown_to_adf("**bold**")
+        assert result["content"] == [
+            {"type": "paragraph", "content": [
+                {"type": "text", "text": "bold", "marks": [{"type": "strong"}]},
+            ]},
+        ]
+
+    def test_italic(self):
+        result = markdown_to_adf("*italic*")
+        assert result["content"] == [
+            {"type": "paragraph", "content": [
+                {"type": "text", "text": "italic", "marks": [{"type": "em"}]},
+            ]},
+        ]
+
+    def test_inline_code(self):
+        result = markdown_to_adf("`code`")
+        assert result["content"] == [
+            {"type": "paragraph", "content": [
+                {"type": "text", "text": "code", "marks": [{"type": "code"}]},
+            ]},
+        ]
+
+    def test_strikethrough(self):
+        result = markdown_to_adf("~~deleted~~")
+        assert result["content"] == [
+            {"type": "paragraph", "content": [
+                {"type": "text", "text": "deleted", "marks": [{"type": "strike"}]},
+            ]},
+        ]
+
+    def test_nested_bold_and_italic(self):
+        result = markdown_to_adf("***both***")
+        marks = result["content"][0]["content"][0]["marks"]
+        mark_types = {m["type"] for m in marks}
+        assert mark_types == {"strong", "em"}
+
+    def test_mixed_inline(self):
+        result = markdown_to_adf("plain **bold** plain")
+        content = result["content"][0]["content"]
+        assert content[0] == {"type": "text", "text": "plain "}
+        assert content[1] == {"type": "text", "text": "bold", "marks": [{"type": "strong"}]}
+        assert content[2] == {"type": "text", "text": " plain"}
