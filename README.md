@@ -83,10 +83,34 @@ jira issue comment DEV-123 "Fixed in commit abc1234"
 
 # Bulk update parent epic
 jira bulk edit DEV-1 DEV-2 DEV-3 --set parent=DEV-100
+jira bulk edit DEV-1 DEV-2 --json '{"team": "Backend"}'
 ```
 
 For raw API access (no field resolution), use `--raw` on reads and
 `--raw-payload` on writes.
+
+### Agent Skill
+
+Install the agent skill for AI coding tools (Pi, Claude Code, Codex):
+
+```bash
+jira skill install --all          # auto-detect tools and install to all
+jira skill install --target pi    # install to a specific tool
+jira skill status                 # check installation status
+jira skill uninstall --all        # remove from all tools
+```
+
+## Error Handling
+
+All errors output structured JSON to stderr:
+
+```bash
+$ jira issue get FAKE-999
+{"error": "404 Client Error: Not Found for url: ...", "type": "HTTPError"}
+```
+
+Exit code is non-zero on errors. Agents can parse the JSON error
+directly without needing to handle raw tracebacks.
 
 ## Authentication
 
@@ -147,11 +171,14 @@ jira issue create --raw-payload '{"fields": {...}}'           # bypass resolutio
 
 jira issue edit DEV-123 --set priority="P1: High" --set story_points=5
 jira issue edit DEV-123 --json '{"team": "Backend"}'
+jira issue edit DEV-123 --description "## Updated\n\nNew description in Markdown"
+jira issue edit DEV-123 --body-file description.md            # read description from file
 jira issue edit DEV-123 --raw-payload '{"fields": {...}}'     # bypass resolution
 
 jira issue transition DEV-123 "In Progress"
 jira issue assign DEV-123 alice@example.com
 jira issue comment DEV-123 "Deployed to staging"
+jira issue comment DEV-123 --body-file analysis.md
 jira issue link DEV-123 DEV-456 --type blocks
 ```
 
@@ -166,6 +193,7 @@ jira search "parent = DEV-100" --fields summary,status,assignee
 
 ```bash
 jira bulk edit DEV-1 DEV-2 DEV-3 --set parent=DEV-100
+jira bulk edit DEV-1 DEV-2 --json '{"team": "Backend"}'
 ```
 
 ### Sprints and Boards

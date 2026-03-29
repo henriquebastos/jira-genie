@@ -161,6 +161,14 @@ jira issue create --json '{"project": "DEV", "issuetype": "Task"}' \
   --set priority="P1: High"
 ```
 
+### With --body-file (long description)
+
+```bash
+jira issue create --json '{"project": "DEV", "issuetype": "Task"}' \
+  --summary "Fix the bug" \
+  --body-file /tmp/description.md
+```
+
 ### Raw payload (bypass resolution)
 
 ```bash
@@ -234,6 +242,12 @@ jira issue edit DEV-123 --set priority="P1: High" --set story_points=5
 # JSON override
 jira issue edit DEV-123 --json '{"team": "Backend", "labels": ["urgent"]}'
 
+# Set description directly (accepts Markdown)
+jira issue edit DEV-123 --description "## Updated\n\nNew description"
+
+# Read description from file (avoids shell escaping)
+jira issue edit DEV-123 --body-file /tmp/description.md
+
 # Raw payload
 jira issue edit DEV-123 --raw-payload '{"fields": {"summary": "Updated title"}}'
 ```
@@ -262,6 +276,7 @@ Only bulk edit is supported. Use it to update the same field(s) across multiple 
 ```bash
 jira bulk edit DEV-1 DEV-2 DEV-3 --set parent=DEV-100
 jira bulk edit DEV-1 DEV-2 --set priority="P1: High"
+jira bulk edit DEV-1 DEV-2 --json '{"team": "Backend"}'
 ```
 
 For bulk creation or transitions, loop over individual commands.
@@ -309,6 +324,14 @@ jira user search "alice"    # find users
 
 ## Error Handling
 
+All errors output structured JSON to stderr:
+
+```json
+{"error": "404 Client Error: Not Found for url: ...", "type": "HTTPError"}
+```
+
+Parse the `error` and `type` fields to decide how to recover:
+
 When a command fails, read the error message and recover:
 
 - **Field validation error** on create/edit → check required fields and allowed values:
@@ -355,20 +378,15 @@ jira search "parent = DEV-123" --fields summary,status
 
 ### Update a ticket's description
 
-Use `jira issue edit` with `--json` to set the description (accepts Markdown):
-
 ```bash
-jira issue edit DEV-123 --json '{"description": "## Updated analysis\n\nThe root cause is..."}'
-```
+# Short description inline
+jira issue edit DEV-123 --description "## Updated analysis\n\nThe root cause is..."
 
-For long descriptions, write to a file first and use `--body-file` on comment,
-or use `--json` with the content:
+# Long description from file (avoids shell escaping issues)
+jira issue edit DEV-123 --body-file /tmp/description.md
 
-```bash
-cat > /tmp/desc.json << 'EOF'
-{"description": "## Full analysis\n\nDetailed description here..."}
-EOF
-jira issue edit DEV-123 --json "$(cat /tmp/desc.json)"
+# Or via --json
+jira issue edit DEV-123 --json '{"description": "Markdown text here"}'
 ```
 
 ### Add a comment
