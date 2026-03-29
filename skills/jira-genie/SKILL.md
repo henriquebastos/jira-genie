@@ -1,9 +1,9 @@
 ---
-name: jira
-description: Search, create, edit, and manage Jira issues via jira-genie CLI. Use when the user needs to interact with Jira — find tickets, create tasks, update status, extract templates, or automate workflows.
+name: jira-genie
+description: Search, create, edit, and manage Jira issues via jira-genie CLI. Use when the user needs to interact with Jira — find tickets, create tasks, create tickets, add comments, update status, extract templates, or automate workflows.
 ---
 
-# Jira
+# Jira Genie
 
 Operate Jira Cloud through the `jira` CLI. All commands output JSON to stdout.
 
@@ -352,6 +352,36 @@ Use `--raw-payload` to bypass all resolution and send exact JSON to the API.
 jira issue get DEV-123
 jira search "parent = DEV-123" --fields summary,status
 ```
+
+### Update a ticket's description
+
+Use `jira issue edit` with `--json` to set the description (accepts Markdown):
+
+```bash
+jira issue edit DEV-123 --json '{"description": "## Updated analysis\n\nThe root cause is..."}'
+```
+
+For long descriptions, write to a file first and use `--body-file` on comment,
+or use `--json` with the content:
+
+```bash
+cat > /tmp/desc.json << 'EOF'
+{"description": "## Full analysis\n\nDetailed description here..."}
+EOF
+jira issue edit DEV-123 --json "$(cat /tmp/desc.json)"
+```
+
+### Add a comment
+
+```bash
+# Short comment
+jira issue comment DEV-123 "Fixed in commit abc1234"
+
+# Long comment from file
+jira issue comment DEV-123 --body-file /tmp/analysis.md
+```
+
+Comments accept Markdown — it's auto-converted to Atlassian Document Format.
 
 ### Create task, do work, close
 
