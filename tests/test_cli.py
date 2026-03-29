@@ -178,10 +178,23 @@ class TestCliErrorOutput:
 
 
 class TestParseSkill:
-    def test_skill_status(self):
-        args = parse(["skill", "status"])
+    def test_skill_install_path(self):
+        args = parse(["skill", "install", "/tmp/skills"])
         assert args.command == "skill"
-        assert args.subcommand == "status"
+        assert args.subcommand == "install"
+        assert args.path == "/tmp/skills"
+
+    def test_skill_install_target(self):
+        args = parse(["skill", "install", "--target", "pi"])
+        assert args.target == ["pi"]
+
+    def test_skill_install_all(self):
+        args = parse(["skill", "install", "--all"])
+        assert args.install_all is True
+
+    def test_skill_uninstall_path(self):
+        args = parse(["skill", "uninstall", "/tmp/skills"])
+        assert args.path == "/tmp/skills"
 
 
 class TestParseSprint:

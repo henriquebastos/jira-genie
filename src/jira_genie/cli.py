@@ -171,19 +171,17 @@ def parse(argv=None):
     skill_parser.set_defaults(subparser=skill_parser)
     skill_sub = skill_parser.add_subparsers(dest="subcommand")
 
-    targets = ["agents", "pi", "claude", "codex"]
+    target_choices = ["agents", "pi", "claude", "codex"]
 
     skill_install = skill_sub.add_parser("install", help="Install skill for AI coding tools")
+    skill_install.add_argument("path", nargs="?", help="Skills directory to install into")
     skill_install.add_argument("--all", dest="install_all", action="store_true", help="Auto-detect and install to all")
-    skill_install.add_argument("--target", action="append", choices=targets, help="Specific tool (repeatable)")
-    skill_install.add_argument("--dry-run", action="store_true", help="Show what would change")
-
-    skill_sub.add_parser("status", help="Show installation status")
+    skill_install.add_argument("--target", action="append", choices=target_choices, help="Shortcut (repeatable)")
 
     skill_uninstall = skill_sub.add_parser("uninstall", help="Remove skill from AI coding tools")
+    skill_uninstall.add_argument("path", nargs="?", help="Skills directory to uninstall from")
     skill_uninstall.add_argument("--all", dest="install_all", action="store_true", help="Auto-detect and remove")
-    skill_uninstall.add_argument("--target", action="append", choices=targets, help="Specific tool (repeatable)")
-    skill_uninstall.add_argument("--dry-run", action="store_true", help="Show what would change")
+    skill_uninstall.add_argument("--target", action="append", choices=target_choices, help="Shortcut (repeatable)")
 
     # completion subcommand
     completion_parser = subparsers.add_parser("completion")
@@ -435,78 +433,60 @@ def _handle_bulk(args):
 
 
 def _handle_skill(args):
-    from jira_genie.skill import TARGETS, detect_targets, install, uninstall
+    from jira_genie.skill import TARGETS, detect_targets, install, resolve_paths, uninstall
 
     if args.subcommand == "install":
-        if not args.install_all and not args.target:
-            # Show help: list available targets and their status
+        path = getattr(args, "path", None)
+        target = getattr(args, "target", None)
+        install_all = getattr(args, "install_all", False)
+
+        if not path and not target and not install_all:
             detected = detect_targets()
-            print("Usage: jira skill install --all | --target <name>")
+            print("Usage: jira skill install <path>")
+            print("       jira skill install --target <name>")
+            print("       jira skill install --all")
             print()
             print("Targets:")
             for name, info in TARGETS.items():
                 status = "detected" if name in detected else "not found"
                 print(f"  {name:10s} {info['label']:30s} ({status})")
-            print()
-            print("Options:")
-            print("  --all       Auto-detect installed tools and install to all")
-            print("  --target    Install to a specific tool (repeatable)")
-            print("  --dry-run   Show what would change without doing it")
             return
 
-        targets = detect_targets() if args.install_all else args.target
-        if not targets:
-            print("No supported tools detected. Use --target to install manually.")
+        targets = detect_targets() if install_all else (target or [])
+        paths = resolve_paths(targets=targets, paths=[path] if path else None)
+        if not paths:
+            print("No supported tools detected. Use a path or --target.")
             return
 
-        dry_run = getattr(args, "dry_run", False)
-        actions = install(targets, dry_run=dry_run)
-
-        prefix = "[dry-run] " if dry_run else ""
-        for a in actions:
-            verb = "Overwrite" if a["action"] == "overwrite" else "Create"
-            print(f"{prefix}{verb} {a['path']}  ({a['label']})")
-
-        if not dry_run:
-            print(f"\n✓ Installed jira skill to {len(actions)} target(s)")
-
-    elif args.subcommand == "status":
-        from pathlib import Path
-
-        detected = detect_targets()
-        for name, info in TARGETS.items():
-            dest = Path(info["dest"]).expanduser() / "SKILL.md"
-            if dest.exists():
-                status = "installed"
-            elif name in detected:
-                status = "not installed"
-            else:
-                status = "not found"
-            print(f"  {name:10s} {info['label']:30s} ({status})")
+        for dest in paths:
+            result = install(dest)
+            verb = "Overwrite" if result["action"] == "overwrite" else "Create"
+            print(f"{verb} {result['path']}")
+        print(f"\n✓ Installed to {len(paths)} location(s)")
 
     elif args.subcommand == "uninstall":
-        if not args.install_all and not args.target:
-            print("Usage: jira skill uninstall --all | --target <name>")
+        path = getattr(args, "path", None)
+        target = getattr(args, "target", None)
+        install_all = getattr(args, "install_all", False)
+
+        if not path and not target and not install_all:
+            print("Usage: jira skill uninstall <path>")
+            print("       jira skill uninstall --target <name>")
+            print("       jira skill uninstall --all")
             return
 
-        targets = detect_targets() if args.install_all else args.target
-        if not targets:
-            print("No supported tools detected.")
-            return
-
-        dry_run = getattr(args, "dry_run", False)
-        actions = uninstall(targets, dry_run=dry_run)
-
-        if not actions:
+        targets = detect_targets() if install_all else (target or [])
+        paths = resolve_paths(targets=targets, paths=[path] if path else None)
+        removed = 0
+        for dest in paths:
+            result = uninstall(dest)
+            if result:
+                print(f"Remove {result['path']}")
+                removed += 1
+        if removed:
+            print(f"\n✓ Removed from {removed} location(s)")
+        else:
             print("Nothing to remove.")
-            return
-
-        prefix = "[dry-run] " if dry_run else ""
-        for a in actions:
-            print(f"{prefix}Remove {a['path']}  ({a['label']})")
-
-        if not dry_run:
-            print(f"\n✓ Removed jira skill from {len(actions)} target(s)")
 
 
 def _handle_completion(args):

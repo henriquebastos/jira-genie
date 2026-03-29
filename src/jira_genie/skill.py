@@ -1,88 +1,58 @@
-"""Install/uninstall the jira agent skill for AI coding tools."""
+"""Install/uninstall the jira-genie agent skill."""
 
 from pathlib import Path
 import shutil
 
+SKILL_DIR = "jira-genie"
+
 TARGETS = {
-    "agents": {
-        "label": "Agent Skills standard",
-        "detect": "~/.agents",
-        "dest": "~/.agents/skills/jira-genie",
-    },
-    "pi": {
-        "label": "Pi",
-        "detect": "~/.pi",
-        "dest": "~/.pi/agent/skills/jira-genie",
-    },
-    "claude": {
-        "label": "Claude Code",
-        "detect": "~/.claude",
-        "dest": "~/.claude/skills/jira-genie",
-    },
-    "codex": {
-        "label": "Codex",
-        "detect": "~/.codex",
-        "dest": "~/.codex/skills/jira-genie",
-    },
+    "agents": {"label": "Agent Skills standard", "detect": "~/.agents", "path": "~/.agents/skills"},
+    "pi": {"label": "Pi", "detect": "~/.pi", "path": "~/.pi/agent/skills"},
+    "claude": {"label": "Claude Code", "detect": "~/.claude", "path": "~/.claude/skills"},
+    "codex": {"label": "Codex", "detect": "~/.codex", "path": "~/.codex/skills"},
 }
 
 
-def _bundled_skill() -> Path:
+def bundled_skill() -> Path:
     """Return path to the bundled SKILL.md."""
-    return Path(__file__).parent / "skills" / "jira-genie" / "SKILL.md"
-
-
-def _dest(target: str) -> Path:
-    return Path(TARGETS[target]["dest"]).expanduser()
+    return Path(__file__).parent / "skills" / SKILL_DIR / "SKILL.md"
 
 
 def detect_targets() -> list[str]:
     """Return target names whose config directories exist."""
-    found = []
-    for name, info in TARGETS.items():
-        if Path(info["detect"]).expanduser().is_dir():
-            found.append(name)
-    return found
+    return [name for name, info in TARGETS.items() if Path(info["detect"]).expanduser().is_dir()]
 
 
-def install(targets: list[str], *, dry_run: bool = False) -> list[dict]:
-    """Install SKILL.md to each target. Returns list of action dicts."""
-    source = _bundled_skill()
+def resolve_paths(targets=None, paths=None) -> list[Path]:
+    """Resolve --target names and explicit paths into a list of skill parent dirs."""
+    result = []
+    for name in (targets or []):
+        result.append(Path(TARGETS[name]["path"]).expanduser())
+    for p in (paths or []):
+        result.append(Path(p).expanduser())
+    return result
+
+
+def install(dest_dir, source=None) -> dict:
+    """Install SKILL.md into dest_dir/jira-genie/. Returns action dict."""
+    source = source or bundled_skill()
     if not source.exists():
         raise FileNotFoundError(f"Bundled skill not found: {source}")
 
-    actions = []
-    for name in targets:
-        dest_dir = _dest(name)
-        dest_file = dest_dir / "SKILL.md"
-        exists = dest_file.exists()
-        action = {
-            "target": name,
-            "label": TARGETS[name]["label"],
-            "path": str(dest_file),
-            "action": "overwrite" if exists else "create",
-        }
-        if not dry_run:
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, dest_file)
-        actions.append(action)
-    return actions
+    skill_dir = Path(dest_dir) / SKILL_DIR
+    dest_file = skill_dir / "SKILL.md"
+    exists = dest_file.exists()
+
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, dest_file)
+
+    return {"path": str(dest_file), "action": "overwrite" if exists else "create"}
 
 
-def uninstall(targets: list[str], *, dry_run: bool = False) -> list[dict]:
-    """Remove installed skill from each target. Returns list of action dicts."""
-    actions = []
-    for name in targets:
-        dest_dir = _dest(name)
-        if not dest_dir.exists():
-            continue
-        action = {
-            "target": name,
-            "label": TARGETS[name]["label"],
-            "path": str(dest_dir),
-            "action": "remove",
-        }
-        if not dry_run:
-            shutil.rmtree(dest_dir)
-        actions.append(action)
-    return actions
+def uninstall(dest_dir) -> dict | None:
+    """Remove jira-genie/ from dest_dir. Returns action dict or None."""
+    skill_dir = Path(dest_dir) / SKILL_DIR
+    if not skill_dir.exists():
+        return None
+    shutil.rmtree(skill_dir)
+    return {"path": str(skill_dir), "action": "remove"}
