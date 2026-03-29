@@ -47,6 +47,11 @@ class TestIssueSubClient:
         req = responses.calls[0].request
         assert req.method == "PUT"
 
+    def test_edit_handles_204_no_content(self, issue, responses):
+        responses.add("PUT", f"{BASE_URL}rest/api/3/issue/DEV-123", body="", status=204)
+        result = issue.edit("DEV-123", {"fields": {"summary": "Updated"}})
+        assert result is None
+
     def test_delete_sends_delete(self, issue, responses):
         responses.add("DELETE", f"{BASE_URL}rest/api/3/issue/DEV-123", body="", status=204)
         result = issue.delete("DEV-123")
@@ -202,6 +207,20 @@ class TestIssueSubClientExtended:
         responses.add("POST", f"{BASE_URL}rest/api/3/issue/DEV-123/comment", json={"id": "1"})
         result = issue.add_comment("DEV-123", "Hello")
         assert result["id"] == "1"
+
+    def test_add_comment_converts_markdown_to_adf(self, issue, responses):
+        responses.add("POST", f"{BASE_URL}rest/api/3/issue/DEV-123/comment", json={"id": "2"})
+        issue.add_comment("DEV-123", "**bold** text")
+        import json
+        body = json.loads(responses.calls[0].request.body)
+        # Should be ADF, not plain string
+        assert body["body"]["type"] == "doc"
+        assert body["body"]["version"] == 1
+
+    def test_add_comment_handles_204_no_content(self, issue, responses):
+        responses.add("POST", f"{BASE_URL}rest/api/3/issue/DEV-123/comment", body="", status=204)
+        result = issue.add_comment("DEV-123", "Hello")
+        assert result is None
 
     def test_get_comments(self, issue, responses):
         responses.add("GET", f"{BASE_URL}rest/api/3/issue/DEV-123/comment", json={

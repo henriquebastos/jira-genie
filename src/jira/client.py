@@ -24,7 +24,9 @@ class IssueSubClient(Client):
         return self.post(url="rest/api/3/issue", json=payload)
 
     def edit(self, issue_key, payload):
-        return self.put(url=f"rest/api/3/issue/{issue_key}", json=payload)
+        response = self.session.request("PUT", f"rest/api/3/issue/{issue_key}", json=payload)
+        response.raise_for_status()
+        return response.json() if response.content else None
 
     def delete(self, issue_key):
         response = self.session.request("DELETE", f"rest/api/3/issue/{issue_key}")
@@ -41,13 +43,22 @@ class IssueSubClient(Client):
         if not match:
             available = [t["name"] for t in transitions]
             raise ValueError(f"Transition '{status_name}' not found. Available: {available}")
-        return self.post(url=f"rest/api/3/issue/{issue_key}/transitions", json={"transition": {"id": match["id"]}})
+        payload = {"transition": {"id": match["id"]}}
+        response = self.session.request("POST", f"rest/api/3/issue/{issue_key}/transitions", json=payload)
+        response.raise_for_status()
+        return response.json() if response.content else None
 
     def assign(self, issue_key, account_id):
-        return self.put(url=f"rest/api/3/issue/{issue_key}/assignee", json={"accountId": account_id})
+        response = self.session.request("PUT", f"rest/api/3/issue/{issue_key}/assignee", json={"accountId": account_id})
+        response.raise_for_status()
+        return response.json() if response.content else None
 
     def add_comment(self, issue_key, body):
-        return self.post(url=f"rest/api/3/issue/{issue_key}/comment", json={"body": body})
+        from jira.adf import markdown_to_adf
+        adf_body = markdown_to_adf(body) if isinstance(body, str) else body
+        response = self.session.request("POST", f"rest/api/3/issue/{issue_key}/comment", json={"body": adf_body})
+        response.raise_for_status()
+        return response.json() if response.content else None
 
     def get_comments(self, issue_key):
         result = super().get(url=f"rest/api/3/issue/{issue_key}/comment")
