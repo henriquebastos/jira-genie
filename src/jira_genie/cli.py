@@ -60,6 +60,7 @@ def parse(argv=None):
     issue_edit.add_argument("key", help="Issue key")
     issue_edit.add_argument("--set", action="append", help="key=value field").completer = FieldSetCompleter()
     issue_edit.add_argument("--json", help="JSON override string")
+    issue_edit.add_argument("--description", help="Set description (accepts Markdown)")
     issue_edit.add_argument("--body-file", help="Read description from file")
     issue_edit.add_argument("--raw-payload", help="Raw JSON payload (bypass resolution)")
 
@@ -310,6 +311,8 @@ def _handle_issue(args):
                 fields = {**json.loads(args.json), **fields}
             if getattr(args, "body_file", None):
                 fields["description"] = _read_file(args.body_file)
+            if getattr(args, "description", None):
+                fields["description"] = args.description
             from jira_genie.schema import resolve_fields
             schema = _load_schema(args.instance)
             payload = {"fields": resolve_fields(fields, schema)}

@@ -86,6 +86,10 @@ class TestParseIssue:
         args = parse(["issue", "edit", "DEV-123", "--body-file", "/tmp/desc.md"])
         assert args.body_file == "/tmp/desc.md"
 
+    def test_issue_edit_description(self):
+        args = parse(["issue", "edit", "DEV-123", "--description", "New desc"])
+        assert args.description == "New desc"
+
     def test_issue_edit_raw(self):
         args = parse(["issue", "edit", "DEV-123", "--raw-payload", '{"fields": {}}'])
         assert args.raw_payload == '{"fields": {}}'
