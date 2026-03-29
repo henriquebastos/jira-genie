@@ -163,6 +163,20 @@ class TestParseTemplate:
         assert args.body_file == "/tmp/desc.md"
 
 
+class TestCliErrorOutput:
+    def test_unknown_command_exits_nonzero(self):
+        import subprocess
+        result = subprocess.run(
+            ["uv", "run", "jira", "issue", "get", "FAKE-999"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode != 0
+        # Should be JSON on stderr, not a raw traceback
+        import json
+        error = json.loads(result.stderr)
+        assert "error" in error
+
+
 class TestParseSkill:
     def test_skill_status(self):
         args = parse(["skill", "status"])

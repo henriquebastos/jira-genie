@@ -200,8 +200,17 @@ def parse(argv=None):
 
 def cli(argv=None):
     """Entry point. Parses, dispatches, handles I/O."""
-    args = parse(argv)
+    try:
+        _dispatch(parse(argv))
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(json.dumps({"error": str(e), "type": type(e).__name__}), file=sys.stderr)
+        sys.exit(1)
 
+
+def _dispatch(args):
+    """Route parsed args to the appropriate handler."""
     # Show help when subcommand is missing
     if args.command and not getattr(args, "subcommand", None) and args.command != "search":
         args.subparser.print_help()
