@@ -110,7 +110,7 @@ jira issue get DEV-22173
 
 ### Self-contained Atlassian OAuth 2.0 (3LO) — No acli dependency
 
-The auth layer handles the full OAuth lifecycle using requestspro's `RecoverableAuth` + `TokenStore` interfaces, the same pattern as requestspro.
+The auth layer handles the full OAuth lifecycle using requestspro's `RecoverableAuth` + `TokenStore` interfaces, the same pattern as an existing requestspro client.
 
 #### Token Storage
 
@@ -231,7 +231,7 @@ class JiraAuth(RecoverableAuth):
         return data["access_token"], data["expires_in"]
 ```
 
-#### How it flows (same as requestspro)
+#### How it flows (same pattern)
 
 ```
 request → RecoverableAuth.__call__(req) → self.token property
@@ -294,7 +294,7 @@ AGILE_BASE_URL = f"https://api.atlassian.com/ex/jira/{CLOUD_ID}/rest/agile/1.0"
 
 ## Client Layer (`client.py`)
 
-### Pattern: MainClient + Sub-clients (same as requestspro)
+### Pattern: MainClient + Sub-clients (same pattern)
 
 ```python
 class JiraSession(ProSession):
@@ -747,7 +747,7 @@ python -m jira search "parent = DEV-22173" | jq -r '.[] | [.key, .status, .summa
 
 ## Tests (`tests/`)
 
-### Pattern: Same as requestspro test_client.py
+### Pattern: Same as existing test_client.py
 
 - **Class-based** test organization
 - **Mock the session** — `make_session()` helper returns a mock `JiraSession`
