@@ -1,5 +1,8 @@
+KNOWN_FIELDS = {"summary", "status", "assignee", "priority", "issuetype", "description"}
+
+
 def format_issue(raw):
-    """Raw Jira issue → clean {key, summary, status, assignee, ...}"""
+    """Raw Jira issue → clean {key, summary, status, assignee, ...} plus extra fields."""
     fields = raw.get("fields", {})
     result = {
         "key": raw["key"],
@@ -15,6 +18,9 @@ def format_issue(raw):
         result["description"] = adf_to_markdown(description)
     else:
         result["description"] = None
+    for key, value in fields.items():
+        if key not in KNOWN_FIELDS:
+            result[key] = value
     return result
 
 

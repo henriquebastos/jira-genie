@@ -83,6 +83,23 @@ class TestFormatIssue:
         assert "## Problem" in result["description"]
         assert "**401 errors**" in result["description"]
 
+    def test_includes_extra_fields(self):
+        raw = {
+            "key": "DEV-123",
+            "fields": {
+                "summary": "Fix the bug",
+                "status": {"name": "To Do"},
+                "issuetype": {"name": "Task"},
+                "customfield_10001": "Backend",
+                "customfield_10002": {"value": "High"},
+                "labels": ["urgent", "prod"],
+            },
+        }
+        result = format_issue(raw)
+        assert result["customfield_10001"] == "Backend"
+        assert result["customfield_10002"] == {"value": "High"}
+        assert result["labels"] == ["urgent", "prod"]
+
     def test_description_none_when_missing(self):
         raw = {
             "key": "DEV-456",
