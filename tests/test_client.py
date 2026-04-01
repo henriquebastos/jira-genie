@@ -252,22 +252,51 @@ class TestIssueSubClientExtended:
 
     def test_transition_raises_on_invalid_status(self, issue, responses):
         responses.add("GET", f"{BASE_URL}rest/api/3/issue/DEV-123/transitions", json={
-            "transitions": [{"id": "31", "name": "In Progress"}],
+            "transitions": [{"id": "31", "name": "Start Progress", "to": {"name": "In Progress"}}],
         })
         import pytest
-        with pytest.raises(ValueError, match="Transition 'Done' not found"):
+        with pytest.raises(ValueError, match=r"Available.*In Progress"):
             issue.transition("DEV-123", "Done")
 
-    def test_transition(self, issue, responses):
+    def test_transition_by_target_status(self, issue, responses):
         responses.add("GET", f"{BASE_URL}rest/api/3/issue/DEV-123/transitions", json={
-            "transitions": [{"id": "31", "name": "In Progress"}, {"id": "41", "name": "Done"}],
+            "transitions": [
+                {"id": "31", "name": "Start Progress", "to": {"name": "In Progress"}},
+                {"id": "41", "name": "Close Issue", "to": {"name": "Done"}},
+            ],
         })
         responses.add("POST", f"{BASE_URL}rest/api/3/issue/DEV-123/transitions", json={})
-        issue.transition("DEV-123", "Done")
+        issue.transition("DEV-123", "In Progress")
         req = responses.calls[1].request
         import json
         body = json.loads(req.body)
-        assert body["transition"]["id"] == "41"
+        assert body["transition"]["id"] == "31"
+
+    def test_transition_by_target_status_case_insensitive(self, issue, responses):
+        responses.add("GET", f"{BASE_URL}rest/api/3/issue/DEV-123/transitions", json={
+            "transitions": [
+                {"id": "31", "name": "Start Progress", "to": {"name": "In Progress"}},
+            ],
+        })
+        responses.add("POST", f"{BASE_URL}rest/api/3/issue/DEV-123/transitions", json={})
+        issue.transition("DEV-123", "in progress")
+        req = responses.calls[1].request
+        import json
+        body = json.loads(req.body)
+        assert body["transition"]["id"] == "31"
+
+    def test_transition_fallback_to_transition_name(self, issue, responses):
+        responses.add("GET", f"{BASE_URL}rest/api/3/issue/DEV-123/transitions", json={
+            "transitions": [
+                {"id": "31", "name": "Start Progress", "to": {"name": "In Progress"}},
+            ],
+        })
+        responses.add("POST", f"{BASE_URL}rest/api/3/issue/DEV-123/transitions", json={})
+        issue.transition("DEV-123", "Start Progress")
+        req = responses.calls[1].request
+        import json
+        body = json.loads(req.body)
+        assert body["transition"]["id"] == "31"
 
     def test_assign(self, issue, responses):
         responses.add("PUT", f"{BASE_URL}rest/api/3/issue/DEV-123/assignee", json={})

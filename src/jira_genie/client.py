@@ -42,10 +42,13 @@ class IssueSubClient(Client):
 
     def transition(self, issue_key, status_name):
         transitions = self.get_transitions(issue_key)
-        match = next((t for t in transitions if t["name"] == status_name), None)
+        name_lower = status_name.lower()
+        match = next((t for t in transitions if t["to"]["name"].lower() == name_lower), None)
         if not match:
-            available = [t["name"] for t in transitions]
-            raise ValueError(f"Transition '{status_name}' not found. Available: {available}")
+            match = next((t for t in transitions if t["name"].lower() == name_lower), None)
+        if not match:
+            available = [t["to"]["name"] for t in transitions]
+            raise ValueError(f"Status '{status_name}' not found. Available: {available}")
         payload = {"transition": {"id": match["id"]}}
         return safe_request(self.session, "POST", f"rest/api/3/issue/{issue_key}/transitions", json=payload)
 
