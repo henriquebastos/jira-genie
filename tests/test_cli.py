@@ -166,12 +166,105 @@ class TestParseTemplate:
         assert args.body_file == "/tmp/desc.md"
 
 
-class TestDispatchSilentFailures:
-    def test_unhandled_command_exits_nonzero(self):
-        """Commands parsed but missing from handlers dict should not silently succeed."""
-        with pytest.raises(SystemExit) as exc_info:
+class TestHandleTemplate:
+    def test_template_list(self, tmp_path, capsys):
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "bug.json").write_text('{"project": "DEV"}')
+        (templates_dir / "task.json").write_text('{"project": "OPS"}')
+        config = tmp_path / "config.json"
+        config.write_text('{}')
+
+        import json
+        from unittest.mock import patch
+        with patch("jira_genie.cli._get_instance_dir", return_value=tmp_path):
             cli(["template", "list"])
-        assert exc_info.value.code != 0
+        out = json.loads(capsys.readouterr().out)
+        assert out == ["bug", "task"]
+
+    def test_template_show(self, tmp_path, capsys):
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "bug.json").write_text('{"project": "DEV", "type": "Bug"}')
+
+        import json
+        from unittest.mock import patch
+        with patch("jira_genie.cli._get_instance_dir", return_value=tmp_path):
+            cli(["template", "show", "bug"])
+        out = json.loads(capsys.readouterr().out)
+        assert out == {"project": "DEV", "type": "Bug"}
+
+    def test_template_create(self, tmp_path, capsys):
+        templates_dir = tmp_path / "templates"
+
+        import json
+        from unittest.mock import patch
+        with patch("jira_genie.cli._get_instance_dir", return_value=tmp_path):
+            cli(["template", "create", "bug", "--json", '{"project": "DEV"}'])
+        out = json.loads(capsys.readouterr().out)
+        assert out["message"] == "Created template 'bug'"
+        assert json.loads((templates_dir / "bug.json").read_text()) == {"project": "DEV"}
+
+    def test_template_delete(self, tmp_path, capsys):
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "bug.json").write_text('{"project": "DEV"}')
+
+        import json
+        from unittest.mock import patch
+        with patch("jira_genie.cli._get_instance_dir", return_value=tmp_path):
+            cli(["template", "delete", "bug"])
+        out = json.loads(capsys.readouterr().out)
+        assert out["message"] == "Deleted template 'bug'"
+        assert not (templates_dir / "bug.json").exists()
+
+    def test_template_default_set(self, tmp_path, capsys):
+        templates_dir = tmp_path / "templates"
+        templates_dir.mkdir()
+        (templates_dir / "bug.json").write_text('{}')
+        config = tmp_path / "config.json"
+        config.write_text('{}')
+
+        import json
+        from unittest.mock import patch
+        with patch("jira_genie.cli._get_instance_dir", return_value=tmp_path):
+            cli(["template", "default", "bug"])
+        out = json.loads(capsys.readouterr().out)
+        assert out["default_template"] == "bug"
+
+    def test_template_default_show(self, tmp_path, capsys):
+        config = tmp_path / "config.json"
+        config.write_text('{"default_template": "bug"}')
+
+        import json
+        from unittest.mock import patch
+        with patch("jira_genie.cli._get_instance_dir", return_value=tmp_path):
+            cli(["template", "default"])
+        out = json.loads(capsys.readouterr().out)
+        assert out["default_template"] == "bug"
+
+    def test_template_default_clear(self, tmp_path, capsys):
+        config = tmp_path / "config.json"
+        config.write_text('{"default_template": "bug"}')
+
+        import json
+        from unittest.mock import patch
+        with patch("jira_genie.cli._get_instance_dir", return_value=tmp_path):
+            cli(["template", "default", "--clear"])
+        out = json.loads(capsys.readouterr().out)
+        assert out["message"] == "Cleared default template"
+
+
+class TestDispatchSilentFailures:
+    def test_unhandled_command_raises(self):
+        """Commands missing from handlers dict should raise, not silently succeed."""
+        import argparse
+
+        from jira_genie.cli import _dispatch
+
+        args = argparse.Namespace(command="nonexistent", subcommand="foo")
+        with pytest.raises(ValueError, match="Unknown command: nonexistent"):
+            _dispatch(args)
 
 
 class TestCliErrorOutput:

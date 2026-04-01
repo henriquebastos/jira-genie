@@ -220,6 +220,9 @@ def _dispatch(args):
         "issue": _handle_issue,
         "search": _handle_search,
         "bulk": _handle_bulk,
+        "template": _handle_template,
+        "sprint": _handle_sprint,
+        "board": _handle_board,
         "user": _handle_user,
         "skill": _handle_skill,
         "completion": _handle_completion,
@@ -432,6 +435,74 @@ def _handle_bulk(args):
             client.issue.edit(key, payload)
             results.append({"key": key, "message": f"Updated {key}"})
         print(json.dumps(results, indent=2))
+
+
+def _handle_template(args):
+    from jira_genie.templates import (
+        clear_default,
+        delete_template,
+        get_default,
+        list_templates,
+        load_template,
+        save_template,
+        set_default,
+    )
+
+    instance_dir = _get_instance_dir(args.instance)
+    templates_dir = instance_dir / "templates"
+    config_file = instance_dir / "config.json"
+
+    if args.subcommand == "list":
+        print(json.dumps(list_templates(templates_dir)))
+    elif args.subcommand == "show":
+        print(json.dumps(load_template(args.name, templates_dir), indent=2))
+    elif args.subcommand == "create":
+        data = json.loads(args.json)
+        save_template(args.name, data, templates_dir)
+        print(json.dumps({"message": f"Created template '{args.name}'"}))
+    elif args.subcommand == "delete":
+        delete_template(args.name, templates_dir)
+        print(json.dumps({"message": f"Deleted template '{args.name}'"}))
+    elif args.subcommand == "default":
+        if args.clear:
+            clear_default(config_file)
+            print(json.dumps({"message": "Cleared default template"}))
+        elif args.name:
+            set_default(args.name, config_file)
+            print(json.dumps({"default_template": args.name}))
+        else:
+            name = get_default(config_file)
+            print(json.dumps({"default_template": name}))
+
+
+def _handle_sprint(args):
+    from jira_genie.client import JiraClient
+    from jira_genie.formatters import format_issue_list, format_sprint
+
+    client = JiraClient.from_config(instance=args.instance)
+    if args.subcommand == "current":
+        result = client.sprint.current(args.board)
+        print(json.dumps(format_sprint(result) if result else None, indent=2))
+    elif args.subcommand == "list":
+        results = client.sprint.list(args.board, state=getattr(args, "state", None))
+        print(json.dumps([format_sprint(s) for s in results], indent=2))
+    elif args.subcommand == "issues":
+        fields = args.fields.split(",") if getattr(args, "fields", None) else None
+        results = client.sprint.issues(args.sprint_id, fields=fields)
+        print(json.dumps(format_issue_list(results), indent=2))
+
+
+def _handle_board(args):
+    from jira_genie.client import JiraClient
+    from jira_genie.formatters import format_issue_list
+
+    client = JiraClient.from_config(instance=args.instance)
+    if args.subcommand == "list":
+        results = client.board.list(project_key=getattr(args, "project", None))
+        print(json.dumps(results, indent=2))
+    elif args.subcommand == "backlog":
+        results = client.board.backlog(args.board_id)
+        print(json.dumps(format_issue_list(results), indent=2))
 
 
 def _handle_skill(args):
