@@ -255,6 +255,56 @@ class TestHandleTemplate:
         assert out["message"] == "Cleared default template"
 
 
+class TestHandleIssueAssign:
+    def test_me_resolves_to_current_user(self, capsys):
+        import json
+        from unittest.mock import MagicMock, patch
+
+        mock_client = MagicMock()
+        mock_client.user.myself.return_value = {"accountId": "abc-123"}
+        with patch("jira_genie.client.JiraClient.from_config", return_value=mock_client):
+            cli(["issue", "assign", "DEV-1", "me"])
+        mock_client.issue.assign.assert_called_once_with("DEV-1", "abc-123")
+        out = json.loads(capsys.readouterr().out)
+        assert out["message"] == "Assigned DEV-1"
+
+    def test_email_resolves_via_user_search(self, capsys):
+        from unittest.mock import MagicMock, patch
+
+        mock_client = MagicMock()
+        mock_client.user.search.return_value = [{"accountId": "user-456"}]
+        with patch("jira_genie.client.JiraClient.from_config", return_value=mock_client):
+            cli(["issue", "assign", "DEV-1", "alice@example.com"])
+        mock_client.user.search.assert_called_once_with("alice@example.com")
+        mock_client.issue.assign.assert_called_once_with("DEV-1", "user-456")
+
+    def test_email_no_results_exits_with_error(self):
+        from unittest.mock import MagicMock, patch
+
+        mock_client = MagicMock()
+        mock_client.user.search.return_value = []
+        with patch("jira_genie.client.JiraClient.from_config", return_value=mock_client):
+            with pytest.raises(SystemExit):
+                cli(["issue", "assign", "DEV-1", "nobody@example.com"])
+
+    def test_email_multiple_results_exits_with_error(self):
+        from unittest.mock import MagicMock, patch
+
+        mock_client = MagicMock()
+        mock_client.user.search.return_value = [{"accountId": "a"}, {"accountId": "b"}]
+        with patch("jira_genie.client.JiraClient.from_config", return_value=mock_client):
+            with pytest.raises(SystemExit):
+                cli(["issue", "assign", "DEV-1", "ambiguous@example.com"])
+
+    def test_raw_account_id_passed_directly(self, capsys):
+        from unittest.mock import MagicMock, patch
+
+        mock_client = MagicMock()
+        with patch("jira_genie.client.JiraClient.from_config", return_value=mock_client):
+            cli(["issue", "assign", "DEV-1", "5b10ac8d82e05b22cc7d4ef5"])
+        mock_client.issue.assign.assert_called_once_with("DEV-1", "5b10ac8d82e05b22cc7d4ef5")
+
+
 class TestDispatchSilentFailures:
     def test_unhandled_command_raises(self):
         """Commands missing from handlers dict should raise, not silently succeed."""

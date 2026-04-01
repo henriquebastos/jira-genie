@@ -384,7 +384,22 @@ def _handle_issue_transition(args, client):
 
 
 def _handle_issue_assign(args, client):
-    client.issue.assign(args.key, args.assignee)
+    assignee = args.assignee
+    if assignee == "me":
+        account_id = client.user.myself()["accountId"]
+    elif "@" in assignee:
+        results = client.user.search(assignee)
+        if len(results) == 0:
+            print(json.dumps({"error": f"No user found for '{assignee}'"}), file=sys.stderr)
+            sys.exit(1)
+        if len(results) > 1:
+            msg = {"error": f"Multiple users found for '{assignee}'", "count": len(results)}
+            print(json.dumps(msg), file=sys.stderr)
+            sys.exit(1)
+        account_id = results[0]["accountId"]
+    else:
+        account_id = assignee
+    client.issue.assign(args.key, account_id)
     print(json.dumps({"message": f"Assigned {args.key}"}))
 
 
