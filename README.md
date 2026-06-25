@@ -198,8 +198,13 @@ jira bulk edit DEV-1 DEV-2 --json '{"team": "Backend"}'
 
 ### Sprints and Boards
 
+Use project-based discovery for the current sprint; board commands remain for
+board-specific operations.
+
 ```bash
+jira sprint current --project DEV
 jira sprint current --board 42
+jira sprint current --board 42 --project DEV    # board first, JQL fallback on 403
 jira sprint list --board 42 --state active,future
 jira sprint issues 123 --fields summary,status
 

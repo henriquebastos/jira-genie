@@ -135,7 +135,8 @@ def parse(argv=None):
     sprint_sub = sprint_parser.add_subparsers(dest="subcommand")
 
     sprint_current = sprint_sub.add_parser("current")
-    sprint_current.add_argument("--board", required=True, help="Board ID")
+    sprint_current.add_argument("--board", help="Board ID")
+    sprint_current.add_argument("--project", help="Project key")
 
     sprint_list = sprint_sub.add_parser("list")
     sprint_list.add_argument("--board", required=True, help="Board ID")
@@ -494,9 +495,22 @@ def _handle_sprint(args):
     from jira_genie.client import JiraClient
     from jira_genie.formatters import format_issue_list, format_sprint
 
+    if args.subcommand == "current" and not getattr(args, "board", None) and not getattr(args, "project", None):
+        print(json.dumps({"error": "Provide --board or --project"}), file=sys.stderr)
+        sys.exit(1)
+
     client = JiraClient.from_config(instance=args.instance)
     if args.subcommand == "current":
-        result = client.sprint.current(args.board)
+        if getattr(args, "project", None) and not getattr(args, "board", None):
+            result = _current_sprint_for_project(args, client)
+        else:
+            try:
+                result = client.sprint.current(args.board)
+            except Exception as e:
+                status_code = getattr(getattr(e, "response", None), "status_code", None)
+                if not getattr(args, "project", None) or status_code != 403:
+                    raise
+                result = _current_sprint_for_project(args, client)
         print(json.dumps(format_sprint(result) if result else None, indent=2))
     elif args.subcommand == "list":
         results = client.sprint.list(args.board, state=getattr(args, "state", None))
@@ -505,6 +519,14 @@ def _handle_sprint(args):
         fields = args.fields.split(",") if getattr(args, "fields", None) else None
         results = client.sprint.issues(args.sprint_id, fields=fields)
         print(json.dumps(format_issue_list(results), indent=2))
+
+
+def _current_sprint_for_project(args, client):
+    schema = _load_schema(args.instance)
+    sprint_field = schema.get("sprint")
+    if not sprint_field:
+        raise ValueError("Sprint field not found in schema. Run `jira fields sync` and retry.")
+    return client.sprint.current_for_project(args.project, sprint_field["id"])
 
 
 def _handle_board(args):

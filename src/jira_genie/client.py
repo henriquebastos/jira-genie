@@ -114,6 +114,15 @@ class SprintSubClient(Client):
         values = result.get("values", [])
         return values[0] if values else None
 
+    def current_for_project(self, project_key, sprint_field_id):
+        jql = f"project = {project_key} AND sprint in openSprints() ORDER BY updated DESC"
+        result = super().get(url="rest/api/3/search/jql", params={"jql": jql, "fields": sprint_field_id})
+        for issue in result.get("issues", []):
+            for sprint in issue.get("fields", {}).get(sprint_field_id, []):
+                if sprint.get("state") == "active":
+                    return sprint
+        return None
+
     def list(self, board_id, state=None):
         params = {}
         if state:

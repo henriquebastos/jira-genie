@@ -358,6 +358,17 @@ class TestParseSprint:
         assert args.subcommand == "current"
         assert args.board == "42"
 
+    def test_sprint_current_with_project(self):
+        args = parse(["sprint", "current", "--project", "DEV"])
+        assert args.command == "sprint"
+        assert args.subcommand == "current"
+        assert args.project == "DEV"
+
+    def test_sprint_current_with_board_and_project(self):
+        args = parse(["sprint", "current", "--board", "42", "--project", "DEV"])
+        assert args.board == "42"
+        assert args.project == "DEV"
+
     def test_sprint_list(self):
         args = parse(["sprint", "list", "--board", "42", "--state", "active,future"])
         assert args.state == "active,future"
@@ -366,6 +377,78 @@ class TestParseSprint:
         args = parse(["sprint", "issues", "123", "--fields", "summary,status"])
         assert args.sprint_id == "123"
         assert args.fields == "summary,status"
+
+
+class TestHandleSprint:
+    def test_current_requires_board_or_project(self, capsys):
+        import json
+        from unittest.mock import patch
+
+        with patch("jira_genie.client.JiraClient.from_config") as from_config:
+            with pytest.raises(SystemExit) as excinfo:
+                cli(["sprint", "current"])
+        assert excinfo.value.code == 1
+        from_config.assert_not_called()
+        err = json.loads(capsys.readouterr().err)
+        assert err == {"error": "Provide --board or --project"}
+
+    def test_current_with_project_uses_jql_discovery(self, tmp_path, capsys):
+        import json
+        from unittest.mock import MagicMock, patch
+
+        (tmp_path / "schema.json").write_text(json.dumps({
+            "fields": {"sprint": {"id": "customfield_10008", "type": "array", "name": "Sprint"}},
+        }))
+        mock_client = MagicMock()
+        mock_client.sprint.current_for_project.return_value = {"id": 42, "name": "Sprint 5", "state": "active"}
+        with (
+            patch("jira_genie.cli._get_instance_dir", return_value=tmp_path),
+            patch("jira_genie.client.JiraClient.from_config", return_value=mock_client),
+        ):
+            cli(["sprint", "current", "--project", "DEV"])
+        mock_client.sprint.current.assert_not_called()
+        mock_client.sprint.current_for_project.assert_called_once_with("DEV", "customfield_10008")
+        out = json.loads(capsys.readouterr().out)
+        assert out == {"id": 42, "name": "Sprint 5", "state": "active", "startDate": None, "endDate": None}
+
+    def test_current_with_board_403_falls_back_to_project(self, tmp_path, capsys):
+        import json
+        from unittest.mock import MagicMock, Mock, patch
+
+        from requests.exceptions import HTTPError
+
+        error = HTTPError("403 Client Error")
+        error.response = Mock(status_code=403)
+        (tmp_path / "schema.json").write_text(json.dumps({
+            "fields": {"sprint": {"id": "customfield_10008", "type": "array", "name": "Sprint"}},
+        }))
+        mock_client = MagicMock()
+        mock_client.sprint.current.side_effect = error
+        mock_client.sprint.current_for_project.return_value = {"id": 42, "name": "Sprint 5", "state": "active"}
+        with (
+            patch("jira_genie.cli._get_instance_dir", return_value=tmp_path),
+            patch("jira_genie.client.JiraClient.from_config", return_value=mock_client),
+        ):
+            cli(["sprint", "current", "--board", "42", "--project", "DEV"])
+        mock_client.sprint.current.assert_called_once_with("42")
+        mock_client.sprint.current_for_project.assert_called_once_with("DEV", "customfield_10008")
+        out = json.loads(capsys.readouterr().out)
+        assert out == {"id": 42, "name": "Sprint 5", "state": "active", "startDate": None, "endDate": None}
+
+    def test_current_with_project_requires_sprint_field_in_schema(self, tmp_path, capsys):
+        import json
+        from unittest.mock import MagicMock, patch
+
+        (tmp_path / "schema.json").write_text(json.dumps({"fields": {}}))
+        with (
+            patch("jira_genie.cli._get_instance_dir", return_value=tmp_path),
+            patch("jira_genie.client.JiraClient.from_config", return_value=MagicMock()),
+            pytest.raises(SystemExit) as excinfo,
+        ):
+            cli(["sprint", "current", "--project", "DEV"])
+        assert excinfo.value.code == 1
+        err = json.loads(capsys.readouterr().err)
+        assert err["error"] == "Sprint field not found in schema. Run `jira fields sync` and retry."
 
 
 class TestParseBoard:

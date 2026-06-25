@@ -300,18 +300,22 @@ The schema output tells you exactly what to pass when creating or editing issues
 
 ## Sprints and Boards
 
-Discover the board ID first, then use it for sprint operations:
+Use project-based discovery for the current sprint because board APIs can be
+forbidden even when issue search works. Board commands still exist for
+board-specific operations.
 
 ```bash
-# Find the board for a project
-jira board list --project DEV
+# Current sprint without board permissions
+jira sprint current --project DEV
 
-# Sprint operations (use the board ID from above)
+# Board-first current sprint, with JQL fallback on board 403
+jira sprint current --board 42 --project DEV
+
+# Board-specific operations
+jira board list --project DEV
 jira sprint current --board 42
 jira sprint list --board 42 --state active,future
 jira sprint issues 123 --fields summary,status,assignee
-
-# Backlog
 jira board backlog 42
 ```
 

@@ -161,6 +161,33 @@ class TestSprintSubClient:
         result = sprint.current(10)
         assert result["id"] == 42
 
+    def test_current_for_project_searches_open_sprints_with_sprint_field(self, sprint, responses):
+        from urllib.parse import parse_qs, urlparse
+
+        responses.add("GET", f"{AGILE_URL}rest/api/3/search/jql", json={"issues": []})
+        result = sprint.current_for_project("DEV", "customfield_10008")
+        query = parse_qs(urlparse(responses.calls[0].request.url).query)
+        assert result is None
+        assert query["jql"] == ["project = DEV AND sprint in openSprints() ORDER BY updated DESC"]
+        assert query["fields"] == ["customfield_10008"]
+
+    def test_current_for_project_extracts_active_sprint_from_issue_fields(self, sprint, responses):
+        sprint_data = {"id": 42, "name": "Sprint 5", "state": "active"}
+        responses.add("GET", f"{AGILE_URL}rest/api/3/search/jql", json={
+            "issues": [{"key": "DEV-1", "fields": {"customfield_10008": [sprint_data]}}],
+        })
+        result = sprint.current_for_project("DEV", "customfield_10008")
+        assert result == sprint_data
+
+    def test_current_for_project_prefers_active_duplicate_sprint(self, sprint, responses):
+        closed = {"id": 42, "name": "Sprint 5", "state": "closed"}
+        active = {"id": 42, "name": "Sprint 5", "state": "active"}
+        responses.add("GET", f"{AGILE_URL}rest/api/3/search/jql", json={
+            "issues": [{"key": "DEV-1", "fields": {"customfield_10008": [closed, active]}}],
+        })
+        result = sprint.current_for_project("DEV", "customfield_10008")
+        assert result == active
+
     def test_list(self, sprint, responses):
         responses.add("GET", f"{AGILE_URL}rest/agile/1.0/board/10/sprint", json={
             "values": [{"id": 42}, {"id": 43}],
